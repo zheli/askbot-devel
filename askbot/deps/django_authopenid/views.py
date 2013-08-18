@@ -1227,9 +1227,14 @@ def signout(request):
     except KeyError:
         logging.debug('failed')
         pass
+
+    #it is important to get this one before logging out
+    #as we may be taking some part of the url from the user session
+    next_url = get_next_url(request)
+    #now log the user out
     logout(request)
     logging.debug('user logged out')
-    return HttpResponseRedirect(get_next_url(request))
+    return HttpResponseRedirect(next_url)
 
 XRDF_TEMPLATE = """<?xml version='1.0' encoding='UTF-8'?>
 <xrds:XRDS
