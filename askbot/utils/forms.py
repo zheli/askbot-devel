@@ -16,17 +16,17 @@ import logging
 import urllib
 
 DEFAULT_NEXT = '/' + getattr(settings, 'ASKBOT_URL')
-def clean_next(next, default = None):
-    if next is None or not next.startswith('/'):
+def clean_next(next_url, default = None):
+    if next_url is None:
         if default:
             return default
         else:
             return DEFAULT_NEXT
     if isinstance(next, str):
-        next = unicode(urllib.unquote(next), 'utf-8', 'replace')
-    next = next.strip()
-    logging.debug('next url is %s' % next)
-    return next
+        next_url = unicode(urllib.unquote(next_url), 'utf-8', 'replace')
+    next_url = next_url.strip()
+    logging.debug('next url is %s' % next_url)
+    return next_url
 
 def get_space(request):
     return request.session.get('askbot_space', spaces.get_default())
@@ -34,6 +34,7 @@ def get_space(request):
 def get_next_url(request, default = None):
     #todo: clean this up - the "space" parameter is new
     space = get_space(request)
+    return clean_next(request.REQUEST.get('next'), default)
     if space:
         #default to the space root url for now
         return spaces.get_url('questions', space)
