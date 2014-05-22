@@ -8030,3 +8030,7 @@ msgstr ""
 #~ "Also, when you sign up for the first time - create a unique <a "
 #~ "href='%(gravatar_faq_url)s'><strong>gravatar</strong></a> personal "
 #~ "image.</p>"
+
+#: conf/words.py:171 conf/words.py:172
+msgid "Please feel free to ask your question!"
+msgstr "还没有人问过，马上提问？"
