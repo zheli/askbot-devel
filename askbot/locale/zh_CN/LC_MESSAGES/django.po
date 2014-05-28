@@ -3142,7 +3142,7 @@ msgstr "使用%(site)s 帐号密码登录"
 #: deps/django_authopenid/util.py:385 templates/authopenid/signin.html:117
 #: templates/authopenid/widget_signin.html:120
 msgid "Create a password-protected account"
-msgstr "创建一个密码保护账户"
+msgstr "注册新账户"
 
 #: deps/django_authopenid/util.py:386
 msgid "Change your password"
