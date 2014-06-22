@@ -334,7 +334,7 @@ msgstr "个人简介"
 
 #: forms.py:1425
 msgid "Screen name"
-msgstr "昵称"
+msgstr "用户名"
 
 #: forms.py:1457 forms.py:1461
 msgid "this email has already been registered, please use another one"
@@ -3142,7 +3142,7 @@ msgstr "使用%(site)s 帐号密码登录"
 #: deps/django_authopenid/util.py:385 templates/authopenid/signin.html:117
 #: templates/authopenid/widget_signin.html:120
 msgid "Create a password-protected account"
-msgstr "创建一个密码保护账户"
+msgstr "注册新账号"
 
 #: deps/django_authopenid/util.py:386
 msgid "Change your password"
@@ -3914,7 +3914,7 @@ msgstr "恭喜，你获得一块'%(badge_name)s'徽章,查看<a\n href=\"%(user_
 #: models/__init__.py:3657
 #, python-format
 msgid "Welcome to %(site_name)s"
-msgstr "欢迎 %(site_name)s"
+msgstr "欢迎您加入%(site_name)s"
 
 #: models/__init__.py:3678 views/commands.py:697
 msgid "Your tag subscription was saved, thanks!"
@@ -5641,7 +5641,7 @@ msgstr "登录失败，请重试"
 #: templates/authopenid/signin.html:106
 #: templates/authopenid/widget_signin.html:109
 msgid "Login or email"
-msgstr "登录名或电子邮箱地址"
+msgstr "用户名或电子邮箱地址"
 
 #: templates/authopenid/signin.html:110
 #: templates/authopenid/widget_signin.html:113 utils/forms.py:264
@@ -5704,7 +5704,7 @@ msgstr "无法删除"
 #: templates/authopenid/signin.html:194
 #: templates/authopenid/widget_signin.html:197
 msgid "Still have trouble signing in?"
-msgstr "还有其他问题？"
+msgstr "登录有问题？"
 
 #: templates/authopenid/signin.html:199
 #: templates/authopenid/widget_signin.html:202
@@ -5914,7 +5914,7 @@ msgstr "\n你好, 这是从 %(site_title)s 网站发出的反馈信息。\n"
 #: templates/email/footer.html:1
 #, python-format
 msgid "Sincerely,<br>%(site_name)s Administrator"
-msgstr ""
+msgstr "祝好，<br>%(site_name)s管理员"
 
 #: templates/email/insufficient_rep_to_post_by_email.html:10
 #, python-format
@@ -6049,7 +6049,7 @@ msgstr ""
 msgid ""
 "Please visit %(site_name)s at <a href=\"%(site_url)s\">%(site_url)s</a>, we "
 "look forward to your posts."
-msgstr ""
+msgstr "现在就前往<a href=\"%(site_url)s\">%(site_name)s</a>，查看您感兴趣的话题吧！"
 
 #: templates/email/rejected_post.html:2 templates/email/rejected_post.html:3
 msgid " Your post was rejected. "
@@ -8031,3 +8031,6 @@ msgstr ""
 #~ "Also, when you sign up for the first time - create a unique <a "
 #~ "href='%(gravatar_faq_url)s'><strong>gravatar</strong></a> personal "
 #~ "image.</p>"
+#: deps/django_authopenid/views.py:1242
+msgid "Activate your account"
+msgstr "激活你的账户 %(site)s "
