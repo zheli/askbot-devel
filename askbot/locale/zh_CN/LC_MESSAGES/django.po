@@ -3139,7 +3139,7 @@ msgstr "确认-电子邮件地址/"
 msgid "%(site)s user name and password"
 msgstr "使用%(site)s 帐号密码登录"
 
-#: deps/django_authopenid/util.py:385 templates/authopenid/signin.html:117
+#: deps/django_authopenid/util.py:385 templates/authopenid/signin.html:113
 #: templates/authopenid/widget_signin.html:120
 msgid "Create a password-protected account"
 msgstr "注册新账号"
@@ -7610,7 +7610,7 @@ msgstr "必填项"
 
 #: utils/forms.py:93
 msgid "Choose a screen name"
-msgstr "昵称"
+msgstr "用户名"
 
 #: utils/forms.py:103
 msgid "user name is required"
