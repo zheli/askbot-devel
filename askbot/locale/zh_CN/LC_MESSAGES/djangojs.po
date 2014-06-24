@@ -71,7 +71,7 @@ msgstr "创建密码"
 
 #: media/jquery-openid/jquery.openid.js:344
 msgid "Create a password-protected account"
-msgstr "创建受密码保护的账号"
+msgstr "注册新账号"
 
 #: media/js/group_messaging.js:102 media/js/group_messaging.js.c:293
 msgid "required"
