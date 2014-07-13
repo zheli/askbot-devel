@@ -153,6 +153,7 @@ class ThreadManager(BaseQuerySetManager):
                 by_email=False,
                 email_address=None,
                 language=None,
+                ip_addr=None,
             ):
         """creates new thread"""
         # TODO: Some of this code will go to Post.objects.create_new
@@ -204,7 +205,8 @@ class ThreadManager(BaseQuerySetManager):
             comment=unicode(const.POST_STATUS['default_version']),
             revised_at=added_at,
             by_email=by_email,
-            email_address=email_address
+            email_address=email_address,
+            ip_addr=ip_addr
         )
 
         author_group = author.get_personal_group()
@@ -287,7 +289,7 @@ class ThreadManager(BaseQuerySetManager):
         # TODO: add a possibility to see deleted questions
         qs = self.filter(**primary_filter)
 
-        if askbot_settings.ENABLE_CONTENT_MODERATION:
+        if askbot_settings.CONTENT_MODERATION_MODE == 'premoderation':
             qs = qs.filter(approved = True)
 
         #if groups feature is enabled, filter out threads
@@ -896,13 +898,30 @@ class Thread(models.Model):
         self.answer_accepted_at = timestamp
         self.save()
 
-    def set_last_activity(self, last_activity_at, last_activity_by):
+    def set_last_activity_info(self, last_activity_at, last_activity_by):
         self.last_activity_at = last_activity_at
         self.last_activity_by = last_activity_by
         self.save()
         ####################################################################
         self.update_summary_html() # regenerate question/thread summary html
         ####################################################################
+
+    def get_last_activity_info(self):
+        post_ids = self.get_answers().values_list('id', flat=True)
+        question = self._question_post()
+        post_ids = list(post_ids)
+        post_ids.append(question.id)
+        from askbot.models import PostRevision
+        revs = PostRevision.objects.filter(
+                            post__id__in=post_ids,
+                            revision__gt=0
+                        ).order_by('-id')
+        rev = revs[0]
+        return rev.revised_at, rev.author
+
+    def update_last_activity_info(self):
+        timestamp, user = self.get_last_activity_info()
+        self.set_last_activity_info(timestamp, user)
 
     def get_tag_names(self):
         "Creates a list of Tag names from the ``tagnames`` attribute."
