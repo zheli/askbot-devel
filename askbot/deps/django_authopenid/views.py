@@ -1236,7 +1236,8 @@ def signup_with_password(request):
                                         'email': email, 'password': password}
                 email_verifier.save()
                 send_email_key(email, email_verifier.key,
-                               handler_url_name='verify_email_and_register')
+                               handler_url_name='verify_email_and_register',
+                               subject=_('Activate your account'))
                 redirect_url = reverse('verify_email_and_register') + \
                                 '?next=' + get_next_url(request)
                 return HttpResponseRedirect(redirect_url)
@@ -1314,12 +1315,13 @@ def set_new_email(user, new_email):
         user.email_isvalid = False
         user.save()
 
-def send_email_key(email, key, handler_url_name='user_account_recover'):
+def send_email_key(email, key, handler_url_name='user_account_recover', subject=None):
     """private function. sends email containing validation key
     to user's email address
     """
-    subject = _("Recover your %(site)s account") % \
-                {'site': askbot_settings.APP_SHORT_NAME}
+    if not subject:
+        subject = _("Recover your %(site)s account") % \
+                    {'site': askbot_settings.APP_SHORT_NAME}
 
     data = {
         'site_name': askbot_settings.APP_SHORT_NAME,
