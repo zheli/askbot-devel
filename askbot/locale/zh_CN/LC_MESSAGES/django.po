@@ -5527,12 +5527,12 @@ msgstr "您忠实的管理员"
 #: templates/authopenid/email_validation.html:3
 #, python-format
 msgid "Greetings from the %(site_name)s"
-msgstr "来自%(site_name)s的祝福"
+msgstr ""
 
 #: templates/authopenid/email_validation.html:7
 #: templates/authopenid/email_validation.txt:3
 msgid "To make use of the Forum, please follow the link below:"
-msgstr "请跟随以下的链接来使用论坛:"
+msgstr "欢迎您注册卧佛移民留学问答网站，请点击以下的链接来激活您的账户:"
 
 #: templates/authopenid/email_validation.html:11
 #: templates/authopenid/email_validation.txt:7
@@ -5545,7 +5545,7 @@ msgid ""
 "If you believe that this message was sent in mistake - \n"
 "no further action is needed. Just ignore this email, we apologize\n"
 "for any inconvenience"
-msgstr "如果你认为此消息被错误的发送,不要进行更进一步的动作.仅仅忽略这封邮件,为给您带来的不便道歉."
+msgstr "如果你没有申请账号，或者没有使用恢复密码功能，请忽略这封邮件。"
 
 #: templates/authopenid/email_validation.txt:1
 msgid "Greetings from the Q&A forum"
@@ -5769,13 +5769,14 @@ msgstr "返回登录"
 #: templates/authopenid/verify_email.html:2
 #: templates/authopenid/verify_email.html:4
 msgid "Confirm email address"
-msgstr ""
+msgstr "确认邮箱地址"
 
 #: templates/authopenid/verify_email.html:6
 msgid ""
 "Validation email sent. Please find it and follow the enclosed link.<br/>\n"
 "        If the link doesn't work - enter the code below:"
-msgstr ""
+msgstr "请通过我们寄给您的确认邮件来激活您的账号。<br/>\n"
+"如果邮件中的链接不能用的话，您也可以手动输入确认码来激活。"
 
 #: templates/authopenid/verify_email.html:11
 msgid "Confirm email"
@@ -5914,7 +5915,7 @@ msgstr "\n你好, 这是从 %(site_title)s 网站发出的反馈信息。\n"
 #: templates/email/footer.html:1
 #, python-format
 msgid "Sincerely,<br>%(site_name)s Administrator"
-msgstr "祝好，<br>%(site_name)s管理员"
+msgstr "祝好，<br>%(site_name)s"
 
 #: templates/email/insufficient_rep_to_post_by_email.html:10
 #, python-format
@@ -8033,4 +8034,4 @@ msgstr ""
 #~ "image.</p>"
 #: deps/django_authopenid/views.py:1242
 msgid "Activate your account"
-msgstr "激活你的账户 %(site)s "
+msgstr "激活你的账户"
