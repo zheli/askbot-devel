@@ -134,13 +134,13 @@ msgstr "至少必填下述标签之一：%(tags)s"
 
 #: forms.py:475
 msgid "community wiki (karma is not awarded & many others can edit wiki post)"
-msgstr "社区 wiki（无积分奖励，很多其他用户也能编辑 wiki 文章）"
+msgstr "社区 wiki（无人品奖励，很多其他用户也能编辑 wiki 文章）"
 
 #: forms.py:479
 msgid ""
 "if you choose community wiki option, the question and answer do not generate"
 " points and name of author will not be shown"
-msgstr "选择社区wiki模式，问答不计算积分，签名也不显示作者信息"
+msgstr "选择社区wiki模式，问答不计算人品，签名也不显示作者信息"
 
 #: forms.py:496
 msgid "update summary:"
@@ -1671,7 +1671,7 @@ msgstr "Here, please enter url templates for the patterns entered in the previou
 
 #: conf/minimum_reputation.py:12
 msgid "Karma thresholds"
-msgstr "积分阈值"
+msgstr "人品阈值"
 
 #: conf/minimum_reputation.py:22
 msgid "Upvote"
@@ -1838,63 +1838,63 @@ msgstr ""
 
 #: conf/reputation_changes.py:13
 msgid "Karma loss and gain rules"
-msgstr "积分增减规则"
+msgstr "人品增减规则"
 
 #: conf/reputation_changes.py:23
 msgid "Maximum daily reputation gain per user"
-msgstr "用户每日获取积分上限"
+msgstr "用户每日获取人品上限"
 
 #: conf/reputation_changes.py:32
 msgid "Gain for receiving an upvote"
-msgstr "收到赞成票可以获得积分"
+msgstr "收到赞成票可以获得人品"
 
 #: conf/reputation_changes.py:41
 msgid "Gain for the author of accepted answer"
-msgstr "被接受答案的作者可以获得积分"
+msgstr "被接受答案的作者可以获得人品"
 
 #: conf/reputation_changes.py:50
 msgid "Gain for accepting best answer"
-msgstr "接受最佳答案可以获得积分"
+msgstr "接受最佳答案可以获得人品"
 
 #: conf/reputation_changes.py:59
 msgid "Gain for post owner on canceled downvote"
-msgstr "被取消反对票的帖子作者可以获得积分"
+msgstr "被取消反对票的帖子作者可以获得人品"
 
 #: conf/reputation_changes.py:68
 msgid "Gain for voter on canceling downvote"
-msgstr "取消反对票的投票者可以获得积分"
+msgstr "取消反对票的投票者可以获得人品"
 
 #: conf/reputation_changes.py:78
 msgid "Loss for voter for canceling of answer acceptance"
-msgstr "投票者取消了接受的回答积分将减少"
+msgstr "投票者取消了接受的回答人品将减少"
 
 #: conf/reputation_changes.py:88
 msgid "Loss for author whose answer was \"un-accepted\""
-msgstr "不被接受答案的作者积分减少"
+msgstr "不被接受答案的作者人品减少"
 
 #: conf/reputation_changes.py:98
 msgid "Loss for giving a downvote"
-msgstr "投反对票者积分减少"
+msgstr "投反对票者人品减少"
 
 #: conf/reputation_changes.py:108
 msgid "Loss for owner of post that was flagged offensive"
-msgstr "被标记为垃圾贴的作者积分减少"
+msgstr "被标记为垃圾贴的作者人品减少"
 
 #: conf/reputation_changes.py:118
 msgid "Loss for owner of post that was downvoted"
-msgstr "被投反对票的作者积分减少"
+msgstr "被投反对票的作者人品减少"
 
 #: conf/reputation_changes.py:128
 msgid "Loss for owner of post that was flagged 3 times per same revision"
-msgstr "同一个帖子被标记3次垃圾贴的作者积分减少"
+msgstr "同一个帖子被标记3次垃圾贴的作者人品减少"
 
 #: conf/reputation_changes.py:138
 msgid "Loss for owner of post that was flagged 5 times per same revision"
-msgstr "同一个帖子被标记5次垃圾贴的作者积分减少"
+msgstr "同一个帖子被标记5次垃圾贴的作者人品减少"
 
 #: conf/reputation_changes.py:148
 msgid "Loss for post owner when upvote is canceled"
-msgstr "帖子赞成票被取消的作者积分减少"
+msgstr "帖子赞成票被取消的作者人品减少"
 
 #: conf/sidebar_main.py:12
 msgid "Main page sidebar"
@@ -2237,7 +2237,7 @@ msgid ""
 "If checked, all forum functions will be shown to users, regardless of their "
 "reputation. However to use those functions, moderation rules, reputation and"
 " other limits will still apply."
-msgstr "如果选择了,所有的网站功能将被展示给用户,不管他们的积分是多少.尽管使用了这些功能,适度规则,积分和其他限制仍然有作用."
+msgstr "如果选择了,所有的网站功能将被展示给用户,不管他们的人品是多少.尽管使用了这些功能,适度规则,人品和其他限制仍然有作用."
 
 #: conf/skin_general_settings.py:137
 msgid "Select skin"
@@ -3509,12 +3509,12 @@ msgstr "对不起你的账户已暂停使用"
 #: models/__init__.py:716
 #, python-format
 msgid ">%(points)s points required to upvote"
-msgstr "需要+%(points)s积分才能投支持票。"
+msgstr "需要至少%(points)s的人品才能投支持票。"
 
 #: models/__init__.py:722
 #, python-format
 msgid ">%(points)s points required to downvote"
-msgstr "需要+%(points)s积分才能投反对票。"
+msgstr "需要+%(points)s人品才能投反对票。"
 
 #: models/__init__.py:737
 msgid "Sorry, blocked users cannot upload files"
@@ -3561,7 +3561,7 @@ msgstr "对不起，因为你的账户已暂停使用，你只能留言你自己
 msgid ""
 "Sorry, to comment any post a minimum reputation of %(min_rep)s points is "
 "required. You can still comment your own posts and answers to your questions"
-msgstr "对不起，留言任何信息都需要最少%(min_rep)s积分值,你可以留言你自己发布或回答的问题"
+msgstr "对不起，留言任何信息都需要最少%(min_rep)s人品值,你可以留言你自己发布或回答的问题"
 
 #: models/__init__.py:884
 msgid ""
@@ -3588,14 +3588,14 @@ msgstr "对不起，你只能编辑你自己发布的信息因为你的账户被
 #, python-format
 msgid ""
 "Sorry, to edit wiki posts, a minimum reputation of %(min_rep)s is required"
-msgstr "对不起，编辑wiki信息需要最低积分%(min_rep)s"
+msgstr "对不起，编辑wiki信息需要最低人品%(min_rep)s"
 
 #: models/__init__.py:933
 #, python-format
 msgid ""
 "Sorry, to edit other people's posts, a minimum reputation of %(min_rep)s is "
 "required"
-msgstr "对不起，编辑其他人的信息需要最低积分%(min_rep)s"
+msgstr "对不起，编辑其他人的信息需要最低人品%(min_rep)s"
 
 #: models/__init__.py:996
 msgid ""
@@ -3635,27 +3635,27 @@ msgstr "对不起，因为你的账户已暂停使用你不能关闭问题"
 msgid ""
 "Sorry, to close other people' posts, a minimum reputation of %(min_rep)s is "
 "required"
-msgstr "对不起，你必须有%(min_rep)s积分才能关闭别人发布的信息"
+msgstr "对不起，你必须有%(min_rep)s人品才能关闭别人发布的信息"
 
 #: models/__init__.py:1057
 #, python-format
 msgid ""
 "Sorry, to close own question a minimum reputation of %(min_rep)s is required"
-msgstr "对不起，你必须有%(min_rep)s积分才能关闭自己发布的问题"
+msgstr "对不起，你必须有%(min_rep)s人品才能关闭自己发布的问题"
 
 #: models/__init__.py:1084
 #, python-format
 msgid ""
 "Sorry, only administrators, moderators or post owners with reputation > "
 "%(min_rep)s can reopen questions."
-msgstr "对不起，只有管理员，版主和有%(min_rep)s积分的发布者才能重开问题"
+msgstr "对不起，只有管理员，版主和有%(min_rep)s人品的发布者才能重开问题"
 
 #: models/__init__.py:1090
 #, python-format
 msgid ""
 "Sorry, to reopen own question a minimum reputation of %(min_rep)s is "
 "required"
-msgstr "对不起，你必须有%(min_rep)s积分才能重开自己发布的问题"
+msgstr "对不起，你必须有%(min_rep)s人品才能重开自己发布的问题"
 
 #: models/__init__.py:1095
 msgid "Sorry, you cannot reopen questions because your account is blocked"
@@ -3707,7 +3707,7 @@ msgstr "对不起，你的帐户被暂停使用，你不能删除标记。请联
 msgid "Sorry, to flag posts a minimum reputation of %(min_rep)d is required"
 msgid_plural ""
 "Sorry, to flag posts a minimum reputation of %(min_rep)d is required"
-msgstr[0] "需要大于%(min_rep)d积分值才能标记信息"
+msgstr[0] "需要大于%(min_rep)d人品值才能标记信息"
 
 #: models/__init__.py:1210
 msgid "you don't have the permission to remove all flags"
@@ -3736,7 +3736,7 @@ msgstr "对不起，你的账户已暂停使用，你只能为你自己的问题
 #, python-format
 msgid ""
 "Sorry, to retag questions a minimum reputation of %(min_rep)s is required"
-msgstr "对不起，为问题修改标签必须有%(min_rep)s积分值"
+msgstr "对不起，为问题修改标签必须有%(min_rep)s人品值"
 
 #: models/__init__.py:1270
 msgid "Sorry, since your account is blocked you cannot delete comment"
@@ -3750,7 +3750,7 @@ msgstr "对不起，因为你的账户暂停使用，你只能删除你自己的
 #: models/__init__.py:1278
 #, python-format
 msgid "Sorry, to delete comments reputation of %(min_rep)s is required"
-msgstr "对不起，删除留言必须有%(min_rep)s积分值"
+msgstr "对不起，删除留言必须有%(min_rep)s人品值"
 
 #: models/__init__.py:1303
 msgid "sorry, but older votes cannot be revoked"
@@ -3829,7 +3829,7 @@ msgstr "认证用户"
 #: models/__init__.py:2495
 #, python-format
 msgid "%(username)s karma is %(reputation)s"
-msgstr "%(username)s 积分是 %(reputation)s"
+msgstr "%(username)s 人品是 %(reputation)s"
 
 #: models/__init__.py:2508
 #, python-format
@@ -4412,7 +4412,7 @@ msgstr "请求的地址有误 - 请核实原始URL地址；"
 msgid ""
 "the page you tried to visit is protected or you don't have sufficient "
 "points, see"
-msgstr "访问的页面被保护或你的积分不够，参见"
+msgstr "访问的页面被保护或你的人品不够，参见"
 
 #: templates/404.html:19 templates/widgets/footer.html:39
 msgid "faq"
@@ -4688,7 +4688,7 @@ msgstr "当声望值达到某个程度，用户的权限就会增加。"
 
 #: templates/faq_static.html:20
 msgid "How does karma system work?"
-msgstr "积分系统如何工作？"
+msgstr "人品系统如何工作？"
 
 #: templates/faq_static.html:21
 msgid ""
@@ -4696,7 +4696,7 @@ msgid ""
 "some points, which are called \\\"karma points\\\". These points serve as a "
 "rough measure of the community trust to him/her. Various moderation tasks "
 "are gradually assigned to the users based on those points."
-msgstr "当一个问题或答案被投赞成票，发表它们的用户将获得一些积分，这是所谓的“积分系统”。这些积分作为一个社区对用户的信任尺度（粗略的）。各种适度的任务逐渐分配给基于这些积分的用户。"
+msgstr "当一个问题或答案被投赞成票，发表它们的用户将获得一些人品，这是所谓的“人品系统”。这些人品作为一个社区对用户的信任尺度（粗略的）。各种适度的任务逐渐分配给基于这些人品的用户。"
 
 #: templates/faq_static.html:22
 #, python-format
@@ -4710,7 +4710,7 @@ msgid ""
 "points that can be accumulated for a question or answer per day. The table "
 "below explains reputation point requirements for each type of moderation "
 "task."
-msgstr "例如，如果你问一个有趣的问题或给别人一个有帮助的答案，你的输入将被投赞成票。否则你的答案是误导的，你将被投反对票。\n每个赞成票将增加<strong>%(REP_GAIN_FOR_RECEIVING_UPVOTE)s</strong>分，每个反对票将减去<strong>%(REP_LOSS_FOR_RECEIVING_DOWNVOTE)s</strong>分，\n每个问题或答案都将有一个<strong>%(MAX_REP_GAIN_PER_USER_PER_DAY)s</strong>分限制。下表解释了每个相应任务的积分要求："
+msgstr "例如，如果你问一个有趣的问题或给别人一个有帮助的答案，你的输入将被投赞成票。否则你的答案是误导的，你将被投反对票。\n每个赞成票将增加<strong>%(REP_GAIN_FOR_RECEIVING_UPVOTE)s</strong>分，每个反对票将减去<strong>%(REP_LOSS_FOR_RECEIVING_DOWNVOTE)s</strong>分，\n每个问题或答案都将有一个<strong>%(MAX_REP_GAIN_PER_USER_PER_DAY)s</strong>分限制。下表解释了每个相应任务的人品要求："
 
 #: templates/faq_static.html:32 templates/user_profile/user_votes.html:14
 msgid "upvote"
@@ -5111,7 +5111,7 @@ msgstr "这个发布像社区wiki被标记"
 msgid ""
 "This post is a wiki.\n"
 "        Anyone with karma &gt;%(wiki_min_rep)s is welcome to improve it."
-msgstr "这个发布是wiki.\n任何积分为 &gt;%(wiki_min_rep)s 都可以改进它."
+msgstr "这个发布是wiki.\n任何人品为 &gt;%(wiki_min_rep)s 都可以改进它."
 
 #: templates/macros.html:146
 msgid "updated"
@@ -5387,13 +5387,13 @@ msgstr "排序方式 &raquo;"
 
 #: templates/users.html:40
 msgid "see people with the highest reputation"
-msgstr "查看积分最高的用户"
+msgstr "查看人品最高的用户"
 
 #: templates/users.html:41 templates/user_profile/user_info.html:25
 #: templates/user_profile/user_reputation.html:5
 #: templates/user_profile/user_tabs.html:24
 msgid "karma"
-msgstr "积分"
+msgstr "人品"
 
 #: templates/users.html:47
 msgid "see people who joined most recently"
@@ -7033,16 +7033,16 @@ msgstr "用户状态已修改"
 #: templates/user_profile/user_moderate.html:25
 #, python-format
 msgid "Your current reputation is %(reputation)s points"
-msgstr "你当前的积分是 %(reputation)s "
+msgstr "你当前的人品是 %(reputation)s "
 
 #: templates/user_profile/user_moderate.html:27
 #, python-format
 msgid "User's current reputation is %(reputation)s points"
-msgstr "用户当前的积分是 %(reputation)s"
+msgstr "用户当前的人品是 %(reputation)s"
 
 #: templates/user_profile/user_moderate.html:31
 msgid "User reputation changed"
-msgstr "用户积分已修改"
+msgstr "用户人品已修改"
 
 #: templates/user_profile/user_moderate.html:38
 msgid "Subtract"
@@ -7139,12 +7139,12 @@ msgstr "来源"
 
 #: templates/user_profile/user_reputation.html:12
 msgid "Your karma change log."
-msgstr "你的积分历史"
+msgstr "你的人品历史"
 
 #: templates/user_profile/user_reputation.html:14
 #, python-format
 msgid "%(user_name)s's karma change log"
-msgstr "%(user_name)s的积分历史"
+msgstr "%(user_name)s的人品历史"
 
 #: templates/user_profile/user_stats.html:6
 #: templates/user_profile/user_tabs.html:7
@@ -7198,7 +7198,7 @@ msgstr "粉丝及已关注用户"
 
 #: templates/user_profile/user_tabs.html:22
 msgid "Graph of user karma"
-msgstr "用户的社区积分历史"
+msgstr "用户的社区人品历史"
 
 #: templates/user_profile/user_tabs.html:27
 msgid "questions that user is following"
@@ -7535,7 +7535,7 @@ msgstr ""
 
 #: templates/widgets/user_long_score_and_badge_summary.html:10
 msgid "karma:"
-msgstr "按积分排序"
+msgstr "按人品排序"
 
 #: templates/widgets/user_long_score_and_badge_summary.html:15
 msgid "badges:"
@@ -7893,11 +7893,11 @@ msgstr "用户资料 - 投票"
 
 #: views/users.py:883
 msgid "user karma"
-msgstr "用户社区积分"
+msgstr "用户社区人品"
 
 #: views/users.py:884
 msgid "Profile - User's Karma"
-msgstr "积分 - 用户资料"
+msgstr "人品 - 用户资料"
 
 #: views/users.py:902
 msgid "users favorite questions"
@@ -8035,3 +8035,7 @@ msgstr ""
 #: deps/django_authopenid/views.py:1242
 msgid "Activate your account"
 msgstr "激活你的账户"
+
+#: const/message_keys.py:1242
+msgid ">%(min_rep)s points required to %(perform_action)s"
+msgstr "人品至少需要%(min_rep)s点才能%(perform_action)s:("
