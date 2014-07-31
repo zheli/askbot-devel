@@ -626,7 +626,6 @@ def user_recent(request, user, context):
     # the return value is dictionary where activity id's are keys
     content_objects_by_activity = activity_objects.fetch_content_objects_dict()
 
-        
     #a list of digest objects, suitable for display
     #the number of activities to show is not guaranteed to be
     #const.USER_VIEW_DATA_TYPE, because we don't show activity

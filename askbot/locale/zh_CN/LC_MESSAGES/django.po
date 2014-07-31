@@ -1,8 +1,9 @@
-# English translation for CNPROG package.
+# Chinese translation for CNPROG package.
 # Copyright (C) 2009 Gang Chen, 2010 Askbot
 # This file is distributed under the same license as the CNPROG package.
-# 
+#
 # Translators:
+# zhe.li <linuxcity.jn@gmail.com>, 2014
 # daisy.ycguo <daisy.ycguo@gmail.com>, 2013
 # evgeny <evgeny.fadeev@gmail.com>, 2009
 # gareth <gareth@unitedstack.com>, 2013
@@ -17,7 +18,7 @@ msgstr ""
 "Report-Msgid-Bugs-To: http://askbot.org/\n"
 "POT-Creation-Date: 2013-07-13 14:06-0500\n"
 "PO-Revision-Date: 2013-08-27 23:19+0000\n"
-"Last-Translator: daisy.ycguo <daisy.ycguo@gmail.com>\n"
+"Last-Translator: Zhe Li <linuxcity.jn@gmail.com>\n"
 "Language-Team: Chinese (China) (http://www.transifex.com/projects/p/askbot/language/zh_CN/)\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -5741,7 +5742,7 @@ msgstr "或在此创建新的用户名与密码"
 
 #: templates/authopenid/signup_with_password.html:26
 msgid "Create login name and password"
-msgstr "使用帐号密码登录"
+msgstr "注册新账号"
 
 #: templates/authopenid/signup_with_password.html:27
 msgid ""
@@ -7459,6 +7460,14 @@ msgid "answer"
 msgid_plural "answers"
 msgstr[0] "回答"
 
+#: conf/words.py:226
+msgid "question\nquestions"
+msgstr "个问题\n个问题"
+
+#: conf/words.py:236
+msgid "answer\nanswers"
+msgstr "个答案\n个答案"
+
 #: templates/widgets/question_summary.html:41
 msgid "vote"
 msgid_plural "votes"
@@ -8039,3 +8048,7 @@ msgstr "激活你的账户"
 #: const/message_keys.py:1242
 msgid ">%(min_rep)s points required to %(perform_action)s"
 msgstr "人品至少需要%(min_rep)s点才能%(perform_action)s:("
+
+#: askbot/conf/words.py:837
+msgid "Add Answer"
+msgstr "添加答案"
