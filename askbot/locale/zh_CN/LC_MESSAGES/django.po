@@ -5673,7 +5673,7 @@ msgstr "修改密码"
 #: templates/authopenid/signin.html:159
 #: templates/authopenid/widget_signin.html:162
 msgid "Here are your current login methods"
-msgstr "这里有你的登录方式"
+msgstr "当前登录方式"
 
 #: templates/authopenid/signin.html:163
 #: templates/authopenid/widget_signin.html:166
@@ -6970,7 +6970,7 @@ msgstr "更新我的资料"
 
 #: templates/user_profile/user_info.html:41
 msgid "manage login methods"
-msgstr "管理登录方法"
+msgstr "登录密码及其他安全设置"
 
 #: templates/user_profile/user_info.html:54
 msgid "real name"
@@ -6998,7 +6998,7 @@ msgstr "个人网站"
 
 #: templates/user_profile/user_info.html:101
 msgid "location"
-msgstr "城市"
+msgstr "所在地"
 
 #: templates/user_profile/user_info.html:108
 msgid "age"
