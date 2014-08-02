@@ -7131,7 +7131,7 @@ msgstr "%(username)s用户概览"
 #: templates/user_profile/user_tabs.html:31
 #: templates/user_profile/user_tabs.html:33
 msgid "activity"
-msgstr "活跃问题"
+msgstr "最新动态"
 
 #: templates/user_profile/user_recent.html:23
 #: templates/user_profile/user_recent.html:27
@@ -7868,13 +7868,9 @@ msgstr "用户概览"
 msgid "user profile overview"
 msgstr "用户概览"
 
-#: views/users.py:650
-msgid "recent user activity"
-msgstr "最近活动"
-
 #: views/users.py:651
 msgid "profile - recent activity"
-msgstr "最近活动"
+msgstr "用户最新动态"
 
 #: views/users.py:682
 msgid "group joining requests"
