@@ -2,6 +2,7 @@ import datetime
 import operator
 import re
 
+from copy import copy
 from django.conf import settings as django_settings
 from django.db import models
 from django.db.models import F
@@ -916,12 +917,16 @@ class Thread(models.Model):
                             post__id__in=post_ids,
                             revision__gt=0
                         ).order_by('-id')
-        rev = revs[0]
-        return rev.revised_at, rev.author
+        try:
+            rev = revs[0]
+            return rev.revised_at, rev.author
+        except IndexError:
+            return None, None
 
     def update_last_activity_info(self):
         timestamp, user = self.get_last_activity_info()
-        self.set_last_activity_info(timestamp, user)
+        if timestamp:
+            self.set_last_activity_info(timestamp, user)
 
     def get_tag_names(self):
         "Creates a list of Tag names from the ``tagnames`` attribute."
@@ -975,11 +980,12 @@ class Thread(models.Model):
         """true if ``user`` is also a thread moderator"""
         if user.is_anonymous():
             return False
-        elif askbot_settings.GROUPS_ENABLED:
-            if user.is_administrator_or_moderator():
+        if user.is_administrator_or_moderator():
+            if askbot_settings.GROUPS_ENABLED:
                 user_groups = user.get_groups(private=True)
                 thread_groups = self.get_groups_shared_with()
                 return bool(set(user_groups) & set(thread_groups))
+            return True
         return False
 
     def requires_response_moderation(self, author):
@@ -1049,7 +1055,102 @@ class Thread(models.Model):
         else:
             self.update_summary_html()
 
-    def get_cached_post_data(self, user = None, sort_method = None):
+    def get_post_data_for_question_view(self, user=None, sort_method=None):
+        """loads post data for use in the question details view
+        """
+        post_data = self.get_cached_post_data(user=user, sort_method=sort_method)
+        if user.is_anonymous():
+            return post_data
+
+        if askbot_settings.CONTENT_MODERATION_MODE == 'premoderation' and user.is_watched():
+            #in this branch we patch post_data with the edits suggested by the 
+            #watched user
+            post_data = list(post_data)
+            post_ids = self.posts.filter(author=user).values_list('id', flat=True)
+            from askbot.models import PostRevision
+            suggested_revs = PostRevision.objects.filter(
+                                                author=user,
+                                                post__id__in=post_ids,
+                                                revision=0
+                                            )
+            #get ids of posts that we need to patch with suggested data
+            if len(suggested_revs):
+                #find posts that we need to patch
+                def find_posts(posts, need_ids):
+                    """posts - is source list
+                    need_ids - set of post ids
+                    """
+                    found = dict()
+                    for post in posts:
+                        if post.id in need_ids:
+                            found[post.id] = post
+                            need_ids.remove(post.id)
+                            comments = post.get_cached_comments()
+                            found.update(find_posts(comments, need_ids))
+                    return found
+
+                suggested_post_ids = set([rev.post_id for rev in suggested_revs])
+
+                question = post_data[0]
+                answers = post_data[1]
+                post_to_author = post_data[2]
+
+                post_id_set = set(suggested_post_ids)
+
+                all_posts = copy(answers)
+                if question:
+                    all_posts.append(question)
+                posts = find_posts(all_posts, post_id_set)
+
+                rev_map = dict(zip(suggested_post_ids, suggested_revs))
+
+                for post_id, post in posts.items():
+                    rev = rev_map[post_id]
+                    #patching work
+                    post.text = rev.text
+                    post.html = post.parse_post_text()['html']
+                    post_to_author[post_id] = rev.author_id
+                    post.set_runtime_needs_moderation()
+
+                def post_type_ord(p):
+                    """need to sort by post type"""
+                    if p.is_question():
+                        return 0
+                    elif p.is_answer():
+                        return 1
+                    return 2
+
+                def cmp_post_types(a, b):
+                    """need to sort by post type"""
+                    at = post_type_ord(a)
+                    bt = post_type_ord(b)
+                    return cmp(at, bt)
+
+                if len(post_id_set):
+                    #brand new suggested posts
+                    from askbot.models import Post
+                    #order by insures that
+                    posts = list(Post.objects.filter(id__in=post_id_set))
+                    for post in sorted(posts, cmp=cmp_post_types):
+                        rev = rev_map[post.id]
+                        post.text = rev.text
+                        post.html = post.parse_post_text()['html']
+                        post_to_author[post.id] = rev.author_id
+                        if post.is_comment():
+                            parents = find_posts(all_posts, set([post.parent_id]))
+                            parent = parents.values()[0]
+                            parent.add_cached_comment(post)
+                        if post.is_answer():
+                            answers.insert(0, post)
+                            all_posts.append(post)#add b/c there may be self-comments
+                        if post.is_question():
+                            post_data[0] = post
+                            all_posts.append(post)
+
+        return post_data
+
+
+    def get_cached_post_data(self, user=None, sort_method=None):
         """returns cached post data, as calculated by
         the method get_post_data()"""
         sort_method = sort_method or askbot_settings.DEFAULT_ANSWER_SORT_METHOD
@@ -1151,7 +1252,7 @@ class Thread(models.Model):
         #put published answers first
         #todo: there may be > 1 enquirers
         published_answer_ids = list()
-        if self.is_moderated() and user != question_post.author:
+        if question_post and question_post.is_approved() == False and user != question_post.author:
             #if moderated - then author is guaranteed to be the
             #limited visibility enquirer
             published_answer_ids = self.posts.get_answers(
@@ -1366,7 +1467,7 @@ class Thread(models.Model):
         self._question_post().make_private(user, group_id)
 
         if len(groups) == 0:
-            message = 'Sharing did not work, because group is unknown'
+            message = _('Sharing did not work, because group is unknown')
             user.message_set.create(message=message)
 
     def is_private(self):

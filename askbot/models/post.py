@@ -236,11 +236,12 @@ class PostManager(BaseQuerySetManager):
         parse_results = post.parse_and_save(author=author, is_private=is_private)
 
         post.add_revision(
-            author = author,
-            revised_at = added_at,
-            text = text,
-            comment = unicode(const.POST_STATUS['default_version']),
-            by_email = by_email
+            author=author,
+            revised_at=added_at,
+            text=text,
+            comment=unicode(const.POST_STATUS['default_version']),
+            by_email=by_email,
+            ip_addr=ip_addr
         )
 
         from askbot.models import signals
@@ -778,7 +779,7 @@ class Post(models.Model):
             self.remove_from_groups((Group.objects.get_global_group(),))
 
         if len(groups) == 0:
-            message = 'Sharing did not work, because group is unknown'
+            message = _('Sharing did not work, because group is unknown')
             user.message_set.create(message=message)
 
     def make_public(self):
@@ -786,6 +787,41 @@ class Post(models.Model):
         from askbot.models.user import Group
         groups = (Group.objects.get_global_group(),)
         self.add_to_groups(groups)
+
+    def merge_post(self, post):
+        """merge with other post"""
+        #take latest revision of current post R1
+        rev = self.get_latest_revision()
+        orig_text = rev.text
+        for rev in post.revisions.all().order_by('revision'):
+            #for each revision of other post Ri
+            #append content of Ri to R1 and use author 
+            new_text = orig_text + '\n\n' + rev.text
+            author = rev.author
+            self.apply_edit(
+                edited_by=rev.author,
+                text=new_text, 
+                comment=_('merged revision'),
+                by_email=False,
+                edit_anonymously=rev.is_anonymous,
+                suppress_email=True,
+                ip_addr=rev.ip_addr
+            )
+        if post.is_question() or post.is_answer():
+            comments = Post.objects.get_comments().filter(parent=post)
+            comments.update(parent=self)
+
+        #todo: implement redirects
+        if post.is_question():
+            self.old_question_id = post.id
+        elif post.is_answer():
+            self.old_answer_id = post.id
+        elif post.is_comment():
+            self.old_comment_id = post.id
+
+        self.save()
+        post.delete()
+
 
     def is_private(self):
         """true, if post belongs to the global group"""
@@ -795,10 +831,18 @@ class Post(models.Model):
             return not self.groups.filter(id=group.id).exists()
         return False
 
+    def set_runtime_needs_moderation(self):
+        """Used at runtime only, the value is not
+        stored in the database"""
+        self._is_approved = False
+
     def is_approved(self):
         """``False`` only when moderation is ``True`` and post
         ``self.approved is False``
         """
+        if getattr(self, '_is_approved', True) == False:
+            return False
+
         if askbot_settings.CONTENT_MODERATION_MODE == 'premoderation':
             if self.approved:
                 return True
@@ -1035,6 +1079,11 @@ class Post(models.Model):
         except AttributeError:
             self._cached_comments = list()
             return self._cached_comments
+
+    def add_cached_comment(self, comment):
+        comments = self.get_cached_comments()
+        if comment not in comments:
+            comments.append(comment)
 
     def add_comment(
                 self,
@@ -1637,7 +1686,8 @@ class Post(models.Model):
     def _question__assert_is_visible_to(self, user):
         """raises QuestionHidden"""
         if self.is_approved() is False:
-            raise exceptions.QuestionHidden()
+            if user != self.author:
+                raise exceptions.QuestionHidden(_('Sorry, this content is not available'))
         if self.deleted:
             message = _('Sorry, this content is no longer available')
             if user.is_anonymous():
@@ -1758,8 +1808,11 @@ class Post(models.Model):
                     suppress_email=False,
                     ip_addr=None,
                 ):
+
+        latest_rev = self.get_latest_revision()
+
         if text is None:
-            text = self.get_latest_revision().text
+            text = latest_rev.text
         if edited_at is None:
             edited_at = datetime.datetime.now()
         if edited_by is None:
@@ -1775,15 +1828,23 @@ class Post(models.Model):
         if self.wiki == False and wiki == True:
             self.wiki = True
 
-        #must add revision before saving the answer
-        self.add_revision(
-            author=edited_by,
-            revised_at=edited_at,
-            text=text,
-            comment=comment,
-            by_email=by_email,
-            ip_addr=ip_addr,
-        )
+        #must add or update revision before saving the answer
+        if latest_rev.revision == 0:
+            #if post has only 0 revision, we just update the
+            #latest revision data
+            latest_rev.text = text
+            latest_rev.revised_at = edited_at
+            latest_rev.save()
+        else:
+            #otherwise we create a new revision
+            self.add_revision(
+                author=edited_by,
+                revised_at=edited_at,
+                text=text,
+                comment=comment,
+                by_email=by_email,
+                ip_addr=ip_addr,
+            )
 
         parse_results = self.parse_and_save(author=edited_by, is_private=is_private)
 
@@ -1808,6 +1869,7 @@ class Post(models.Model):
                         comment=None,
                         wiki=False,
                         is_private=False,
+                        edit_anonymously=False,
                         by_email=False,
                         suppress_email=False,
                         ip_addr=None,

@@ -140,6 +140,24 @@ settings.register(
 settings.register(
     values.StringValue(
         WORDS,
+        'WORDS_MERGE_QUESTIONS',
+        default=_('Merge duplicate questions'),
+        description=_('Merge duplicate questions')
+    )
+)
+
+settings.register(
+    values.StringValue(
+        WORDS,
+        'WORDS_ENTER_DUPLICATE_QUESTION_ID',
+        default=_('Enter duplicate question ID'),
+        description=_('Enter duplicate question ID')
+    )
+)
+
+settings.register(
+    values.StringValue(
+        WORDS,
         'WORDS_ASKED',
         default=_('asked'),
         description=_('asked'),
@@ -223,8 +241,8 @@ settings.register(
     values.LongStringValue(
         WORDS,
         'WORDS_QUESTIONS_COUNTABLE_FORMS',
-        default=_('question\nquestions'),
-        description=_('Countable plural forms for "queston"'),
+        default='question\nquestions',
+        description=_('Countable plural forms for "question"'),
         help_text=_('Enter one form per line, pay attention')
     )
 )

@@ -3,6 +3,9 @@ Changes in Askbot
 
 Development master branch (only on github)
 ------------------------------------------
+* Admins and Moderators can merge questions.
+* Improved moderation modes: flags, audit, premoderation. 
+  Watched user status, IP blocking, mass content removal.
 * Allow bulk deletion of user content simultaneously with blocking
 * Allow custom destination url under the logo
 * Option to allow asking without registration (Egil Moeller)

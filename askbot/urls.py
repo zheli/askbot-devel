@@ -275,6 +275,11 @@ urlpatterns = patterns('',
         views.writers.answer,
         name='answer'
     ),
+    service_url(
+        r'^merge-questions/',
+        views.commands.merge_questions,
+        name='merge_questions'
+    ),
     service_url(#ajax only
         r'^vote$',
         views.commands.vote,
@@ -492,6 +497,11 @@ urlpatterns = patterns('',
         r'^manage-inbox/$',
         views.commands.manage_inbox,
         name='manage_inbox'
+    ),
+    service_url(#ajax only
+        r'^clear-new-notifications/$',
+        views.users.clear_new_notifications,
+        name='clear_new_notifications'
     ),
     service_url(#ajax only
         r'^save-post-reject-reason/$',

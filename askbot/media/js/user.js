@@ -4,6 +4,14 @@ var setup_inbox = function(){
         var modControls = new PostModerationControls();
         modControls.decorate(page);
     }
+    var page = $('.inbox-forum');
+    if (page.length) {
+        var clearNotifs = $('.clear-messages');
+        if (clearNotifs.length) {
+            var inbox = new ResponseNotifs();
+            inbox.decorate(clearNotifs);
+        }
+    }
 };
 
 var setup_badge_details_toggle = function(){
@@ -22,6 +30,42 @@ var setup_badge_details_toggle = function(){
             $(elem).click(toggle_display);
         }
     });
+};
+
+var ResponseNotifs = function() {
+    WrappedElement.call(this);
+};
+inherits(ResponseNotifs, WrappedElement);
+
+ResponseNotifs.prototype.clearNewNotifs = function() {
+    var news = $('.new');
+    $('#ab-responses').fadeOut();
+    this._element.fadeOut(function() {
+        news.removeClass('new highlight');
+    });
+};
+
+ResponseNotifs.prototype.makeHandler = function() {
+    var me = this;
+    return function() {
+        $.ajax({
+            type: 'POST',
+            cache: false,
+            dataType: 'json',
+            url: askbot['urls']['clearNewNotifications'],
+            success: function(response_data){
+                if (response_data['success']) {
+                    me.clearNewNotifs();
+                }
+            }
+        });
+    };
+};
+
+ResponseNotifs.prototype.decorate = function(element) {
+    this._element = element;
+    var btn = element.find('a');
+    setupButtonEventHandlers(btn, this.makeHandler());
 };
 
 /**
@@ -129,6 +173,10 @@ PostModerationControls.prototype.setEntryCount = function(count) {
     this._entryCount.html(count);
 };
 
+PostModerationControls.prototype.getEntryCount = function() {
+    return this.getCheckBoxes().length;
+};
+
 PostModerationControls.prototype.getCheckBoxes = function() {
     return this._element.find('.messages input[type="checkbox"]');
 };
@@ -180,8 +228,27 @@ PostModerationControls.prototype.getModHandler = function(action, items, optReas
                     me.removeEntries(response_data['memo_ids']);
                     me.setEntryCount(response_data['memo_count']);
                 }
-                if (response_data['message']) {
-                    me.showMessage(response_data['message']);
+
+                var message = response_data['message'] || '';
+                if (me.getEntryCount() < 10 && response_data['memo_count'] > 9) {
+                    if (message) {
+                        message += '. '
+                    }
+                    var junk = $('#junk-mod');
+                    if (junk.length == 0) {
+                        junk = me.makeElement('div');
+                        junk.attr('id', 'junk-mod');
+                        junk.hide();
+                        $(document).append(junk);
+                    }
+                    var a = me.makeElement('a');
+                    a.attr('href', window.location.href);
+                    a.text(gettext('Load more items.'));
+                    junk.append(a);
+                    message += a[0].outerHTML;
+                }
+                if (message) {
+                    me.showMessage(message);
                 }
             }
         });

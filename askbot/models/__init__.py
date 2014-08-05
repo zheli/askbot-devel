@@ -24,6 +24,7 @@ from django.db.models import signals as django_signals
 from django.template import Context
 from django.template.loader import get_template
 from django.utils.translation import get_language
+from django.utils.translation import string_concat
 from django.utils.translation import ugettext as _
 from django.utils.translation import ungettext
 from django.utils.safestring import mark_safe
@@ -628,6 +629,7 @@ def _assert_user_can(
             'perform_action': action_display,
             'your_account_is': _('your account is blocked')
         }
+        error_message = string_concat(error_message, '.</br> ', message_keys.PUNISHED_USER_INFO)
     elif post and owner_can and user == post.get_owner():
         if user.is_suspended() and suspended_owner_cannot:
             error_message = _(message_keys.ACCOUNT_CANNOT_PERFORM_ACTION) % {
@@ -782,6 +784,14 @@ def user_assert_can_upload_file(request_user):
         blocked_user_cannot=True,
         suspended_user_cannot=True,
         min_rep_setting=askbot_settings.MIN_REP_TO_UPLOAD_FILES
+    )
+
+
+def user_assert_can_merge_questions(self):
+    _assert_user_can(
+        user=self,
+        action_display=_('merge duplicate questions'),
+        admin_or_moderator_required=True
     )
 
 
@@ -1283,20 +1293,10 @@ def user_post_anonymous_askbot_content(user, session_key):
             aa.save()
         #maybe add pending posts message?
     else:
-        if user.is_blocked() or user.is_suspended():
-            if user.is_blocked():
-                account_status = _('your account is blocked')
-            elif user.is_suspended():
-                account_status = _('your account is suspended')
-            user.message_set.create(message = _(message_keys.ACCOUNT_CANNOT_PERFORM_ACTION) % {
-                'perform_action': _('make posts'),
-                'your_account_is': account_status
-            })
-        else:
-            for aq in aq_list:
-                aq.publish(user)
-            for aa in aa_list:
-                aa.publish(user)
+        for aq in aq_list:
+            aq.publish(user)
+        for aa in aa_list:
+            aa.publish(user)
 
 
 def user_mark_tags(
@@ -1392,6 +1392,38 @@ def user_mark_tags(
             cleaned_tagnames = tagnames
 
     return cleaned_tagnames, cleaned_wildcards
+
+def user_merge_duplicate_questions(self, from_q, to_q):
+    """merges content from the ``from_thread`` to the ``to-thread``"""
+    #todo: maybe assertion will depend on which questions are merged
+    self.assert_can_merge_questions()
+    to_q.merge_post(from_q)
+    from_thread = from_q.thread
+    to_thread = to_q.thread
+    #set new thread value to all posts
+    posts = from_thread.posts.all()
+    posts.update(thread=to_thread)
+
+    if askbot_settings.LIMIT_ONE_ANSWER_PER_USER:
+        #merge answers if only one is allowed per user
+        answers = to_thread.all_answers()
+        answer_map = collections.defaultdict(list)
+        #compile all answers by user
+        for answer in answers:
+            author = answer.author
+            answer_map[author].append(answer)
+
+        for author in answer_map:
+            author_answers = answer_map[author]
+            if author_answers > 1:
+                first_answer = author_answers.pop(0)
+                for answer in author_answers:
+                    first_answer.merge_post(answer)
+
+    #from_thread.spaces.clear()
+    from_thread.delete()
+    to_thread.invalidate_cached_data()
+
 
 @auto_now_timestamp
 def user_retag_question(
@@ -2282,7 +2314,7 @@ def user_get_status_display(self):
     if self.is_approved():
         return _('Registered User')
     elif self.is_administrator():
-        return _('Adminstrator')
+        return _('Administrator')
     elif self.is_moderator():
         return _('Moderator')
     elif self.is_suspended():
@@ -3026,6 +3058,7 @@ User.add_to_class('follow_question', user_follow_question)
 User.add_to_class('unfollow_question', user_unfollow_question)
 User.add_to_class('is_following_question', user_is_following_question)
 User.add_to_class('mark_tags', user_mark_tags)
+User.add_to_class('merge_duplicate_questions', user_merge_duplicate_questions)
 User.add_to_class('update_response_counts', user_update_response_counts)
 User.add_to_class('can_create_tags', user_can_create_tags)
 User.add_to_class('can_have_strong_url', user_can_have_strong_url)
@@ -3084,6 +3117,7 @@ User.add_to_class('is_read_only', user_is_read_only)
 User.add_to_class('assert_can_vote_for_post', user_assert_can_vote_for_post)
 User.add_to_class('assert_can_revoke_old_vote', user_assert_can_revoke_old_vote)
 User.add_to_class('assert_can_upload_file', user_assert_can_upload_file)
+User.add_to_class('assert_can_merge_questions', user_assert_can_merge_questions)
 User.add_to_class('assert_can_post_question', user_assert_can_post_question)
 User.add_to_class('assert_can_post_answer', user_assert_can_post_answer)
 User.add_to_class('assert_can_post_comment', user_assert_can_post_comment)
@@ -3745,6 +3779,16 @@ def add_missing_tag_subscriptions(sender, instance, created, **kwargs):
                 instance.mark_tags(tagnames = tag_list,
                                 reason='subscribed', action='add')
 
+def notify_punished_users(user, **kwargs):
+    try:
+        _assert_user_can(
+                    user=user,
+                    blocked_user_cannot=True,
+                    suspended_user_cannot=True
+                )
+    except django_exceptions.PermissionDenied, e:
+        user.message_set.create(message = unicode(e))
+
 def post_anonymous_askbot_content(
                                 sender,
                                 request,
@@ -3756,7 +3800,10 @@ def post_anonymous_askbot_content(
     """signal handler, unfortunately extra parameters
     are necessary for the signal machinery, even though
     they are not used in this function"""
-    user.post_anonymous_askbot_content(session_key)
+    if user.is_blocked() or user.is_suspended():
+        pass
+    else:
+        user.post_anonymous_askbot_content(session_key)
 
 def set_user_avatar_type_flag(instance, created, **kwargs):
     instance.user.update_avatar_type()
@@ -3834,6 +3881,7 @@ signals.user_registered.connect(greet_new_user)
 signals.user_registered.connect(make_admin_if_first_user)
 signals.user_updated.connect(record_user_full_updated, sender=User)
 signals.user_logged_in.connect(complete_pending_tag_subscriptions)#todo: add this to fake onlogin middleware
+signals.user_logged_in.connect(notify_punished_users)
 signals.user_logged_in.connect(post_anonymous_askbot_content)
 signals.post_updated.connect(record_post_update_activity)
 signals.new_answer_posted.connect(tweet_new_post)

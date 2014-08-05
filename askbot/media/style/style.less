@@ -237,7 +237,6 @@ body.user-messages {
     .notification {
         color: #424242;
         font-size: 16px;
-        height: 34px;
         line-height: 34px;
         margin: 0 !important;
     }
@@ -2161,6 +2160,22 @@ ul#related-tags li {
 
 /* ----- Question template ----- */
 
+.answer, .question {
+    .moderated {
+        font-weight: bold;
+        background: url(../images/dialog-warning.png) 2px 0 no-repeat;
+        text-decoration: underline;
+        line-height: 16px !important;
+        margin-bottom: -2px !important;
+        padding-left: 24px !important;
+    }
+    .comment .moderated {
+        background-position: 4px 0;
+        margin-bottom: -5px !important;
+        padding-left: 24px !important;
+    }
+}
+
 .question-page {
 
     h1 {
@@ -2389,6 +2404,9 @@ ul#related-tags li {
         }
         .question-close{
             background: url(../images/close.png) no-repeat center left;
+        }
+        .question-merge {
+            background: url(../images/merge.png) no-repeat;
         }
         .permant-link{
             background: url(../images/link.png) no-repeat 2px 1px;
@@ -3973,6 +3991,9 @@ button::-moz-focus-inner {
     line-height: 10px;
     font-size: 12px;
     padding: 0;
+    a {
+        font-weight: bold;
+    }
 }
 
 .inbox-flags .action-status {
@@ -4502,8 +4523,34 @@ textarea.tipped-input {
 .modal-footer {
     text-align: left;
 }
-.modal p {
-    font-size: 14px;
+.modal {
+    h3 {
+        padding: 0;
+    }
+    p {
+        font-size: 14px;
+    }
+}
+.modal.merge-questions {
+    .modal-body {
+        label {
+            padding-right: 8px;
+        }
+        .body,
+        .tags {
+            clear: both;
+        }
+        h3 {
+            line-height: 22px;
+            margin-top: 12px;
+        }
+        .tags {
+            margin-top: 12px;
+        }
+        .body {
+            margin-top: 16px;
+        }
+    }
 }
 .modal-body > textarea {
     width: 515px;
