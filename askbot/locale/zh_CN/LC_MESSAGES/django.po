@@ -8048,3 +8048,7 @@ msgstr "贡献值至少需要%(min_rep)s点才能%(perform_action)s:("
 #: askbot/conf/words.py:837
 msgid "Add Answer"
 msgstr "添加答案"
+
+#: askbot/templates/widgets/user_perms.html:21
+msgid "Make new posts"
+msgstr "添加新问题"
