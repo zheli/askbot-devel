@@ -241,7 +241,7 @@ msgstr "跟踪"
 #, c-format
 msgid "%s follower"
 msgid_plural "%s followers"
-msgstr[0] "%s 位跟踪者"
+msgstr[0] "被%s 人关注"
 
 #: media/js/post.js:845
 msgid "<div>Following</div><div class=\"unfollow\">Unfollow</div>"

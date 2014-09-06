@@ -6579,7 +6579,7 @@ msgstr "关注"
 #, python-format
 msgid "%(count)s follower"
 msgid_plural "%(count)s followers"
-msgstr[0] "%(count)s 位粉丝"
+msgstr[0] "被%(count)s 人关注"
 
 #: templates/question/sidebar.html:33
 msgid "subscribe to this question rss feed"
