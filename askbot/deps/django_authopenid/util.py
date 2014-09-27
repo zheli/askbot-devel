@@ -176,6 +176,19 @@ def use_password_login():
         return True
     return False
 
+def is_login_method_enabled(name):
+    name_key = name.upper().replace('-', '_')
+    setting = getattr(askbot_settings, 'SIGNIN_' + name_key + '_ENABLED', None)
+    if setting is not None:
+        return setting
+
+    google_method = askbot_settings.SIGNIN_GOOGLE_METHOD
+    if name == 'google':
+        return google_method == 'openid'
+    elif name == 'google-plus':
+        return google_method == 'google-plus'
+    return False
+
 def filter_enabled_providers(data):
     """deletes data about disabled providers from
     the input dictionary
@@ -183,9 +196,7 @@ def filter_enabled_providers(data):
     delete_list = list()
     for provider_key, provider_settings in data.items():
         name = provider_settings['name']
-        name_key = name.upper().replace('-', '_')
-        is_enabled = getattr(askbot_settings, 'SIGNIN_' + name_key + '_ENABLED')
-        if is_enabled == False:
+        if not is_login_method_enabled(name):
             delete_list.append(provider_key)
 
     for provider_key in delete_list:
@@ -429,7 +440,6 @@ def get_enabled_major_login_providers():
             'get_user_id_function': get_facebook_user_id,
             'response_parser': lambda data: dict(urlparse.parse_qsl(data)),
             'scope': ['email',],
-
         }
     if askbot_settings.TWITTER_KEY and askbot_settings.TWITTER_SECRET:
         data['twitter'] = {
@@ -496,13 +506,33 @@ def get_enabled_major_login_providers():
             'icon_media_path': '/jquery-openid/images/linkedin.gif',
             'get_user_id_function': get_linked_in_user_id
         }
-    data['google'] = {
-        'name': 'google',
-        'display_name': 'Google',
-        'type': 'openid-direct',
-        'icon_media_path': '/jquery-openid/images/google.gif',
-        'openid_endpoint': 'https://www.google.com/accounts/o8/id',
-    }
+
+    def get_google_user_id(client):
+        return client.request('me')['id']
+
+    google_method = askbot_settings.SIGNIN_GOOGLE_METHOD
+    if google_method == 'google-plus':
+        if askbot_settings.GOOGLE_PLUS_KEY and askbot_settings.GOOGLE_PLUS_SECRET:
+            data['google-plus'] = {
+                'name': 'google-plus',
+                'display_name': 'Google',
+                'type': 'oauth2',
+                'auth_endpoint': 'https://accounts.google.com/o/oauth2/auth',
+                'token_endpoint': 'https://accounts.google.com/o/oauth2/token',
+                'resource_endpoint': 'https://www.googleapis.com/plus/v1/people/',
+                'icon_media_path': '/jquery-openid/images/google.gif',
+                'get_user_id_function': get_google_user_id,
+                'extra_auth_params': {'scope': ('profile', 'email', 'openid'), 'openid.realm': askbot_settings.APP_URL}
+            }
+    elif google_method == 'openid':
+        data['google'] = {
+            'name': 'google',
+            'display_name': 'Google',
+            'type': 'openid-direct',
+            'icon_media_path': '/jquery-openid/images/google-openid.gif',
+            'openid_endpoint': 'https://www.google.com/accounts/o8/id',
+        }
+
     data['mozilla-persona'] = {
         'name': 'mozilla-persona',
         'display_name': 'Mozilla Persona',
@@ -849,14 +879,14 @@ def get_oauth2_starter_url(provider_name, csrf_token):
 
     providers = get_enabled_login_providers()
     params = providers[provider_name]
-    client_id = getattr(askbot_settings, provider_name.upper() + '_KEY')
+    client_id = getattr(askbot_settings, provider_name.replace('-', '_').upper() + '_KEY')
     redirect_uri = site_url(reverse('user_complete_oauth2_signin'))
     client = Client(
         auth_endpoint=params['auth_endpoint'],
         client_id=client_id,
         redirect_uri=redirect_uri
     )
-    return client.auth_uri(state=csrf_token, scope=params['scope'])
+    return client.auth_uri(state=csrf_token, **params.get('extra_auth_params', {}))
 
 
 def ldap_check_password(username, password):
@@ -892,3 +922,9 @@ def mozilla_persona_get_email_from_assertion(assertion):
             raise ImproperlyConfigured(message)
     #todo: nead more feedback to help debug fail cases
     return None
+
+def google_migrate_from_openid_to_gplus(openid_url, gplus_id):
+    from askbot.deps.django_authopenid.models import UserAssociation
+    assoc = UserAssociation.object.filter(openid_url=openid_url)
+    assoc.update(openid_url=str(gplus_id), provider_name='google-plus')
+

@@ -582,9 +582,7 @@ for the purposes of the AJAX comment editor #}
     {% endif %}
 {%- endmacro -%}
 
-{%- macro user_long_score_and_badge_summary(
-    user, karma_mode=None, badges_mode = None
-) -%}
+{%- macro user_long_score_and_badge_summary(user) -%}
   {%- include "widgets/user_long_score_and_badge_summary.html" -%}
 {%- endmacro -%}
 
@@ -630,7 +628,7 @@ for the purposes of the AJAX comment editor #}
     {% include "widgets/user_card.html" %}
 {% endmacro %}
 
-{%- macro user_list(users, karma_mode=None, badges_mode=None) -%}
+{%- macro user_list(users) -%}
     {% include "widgets/user_list.html" %}
 {%- endmacro -%}
 
@@ -782,9 +780,7 @@ for the purposes of the AJAX comment editor #}
 
 {%- macro moderation_items_link(user, moderation_items) -%}
     {% if moderation_items %}
-        <a id="ab-responses"
-            href="{{user.get_absolute_url()}}?sort=inbox&section=flags"
-        >
+        <a id="ab-responses" href="{% url moderation_queue %}">
         {% if moderation_items['new_count'] > 0 %}
             <img src="{{'/images/dialog-warning.png'|media}}"
             {% if moderation_items['seen_count'] > 0 %}
