@@ -7036,7 +7036,7 @@ msgstr "朋友圈"
 #, python-format
 msgid "Followed by %(count)s person"
 msgid_plural "Followed by %(count)s people"
-msgstr[0] "被 %(count)s 名用户"
+msgstr[0] "被 %(count)s 名用户关注"
 
 #: templates/user_profile/user_network.html:20
 #, python-format
@@ -7157,7 +7157,7 @@ msgstr "以他人的名义发表文章。"
 #: templates/widgets/footer.html:33
 #, python-format
 msgid "Content on this site is licensed under a %(license)s"
-msgstr "本站内容依 %(license)s 授权"
+msgstr "本站内容遵循 %(license)s 授权"
 
 #: templates/widgets/footer.html:38
 msgid "about"
