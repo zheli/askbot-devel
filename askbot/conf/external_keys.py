@@ -176,3 +176,12 @@ settings.register(
         description=_('ident.ca consumer secret'),
     )
 )
+
+settings.register(
+    livesettings.StringValue(
+        EXTERNAL_KEYS,
+        'MIXPANEL_TOKEN',
+        description=_('Mixpanel token'),
+        help_text=_('Used to setup Mixpanel JS tracking script'),
+    )
+)
