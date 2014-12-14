@@ -732,6 +732,11 @@ class Thread(models.Model):
         if len(answers) > 0:
             return answers[0].id
         return None
+        
+    def get_answer_ids(self, user=None):
+        """give the ids to all the answers for the user"""
+        answers = self.get_answers(user=user)
+        return [answer.id for answer in answers]
 
     def get_latest_revision(self, user=None):
         #todo: add denormalized field to Thread model
@@ -742,7 +747,7 @@ class Thread(models.Model):
             'deleted': False
         }
 
-        if user and askbot_settings.GROUPS_ENABLED:
+        if user and user.is_authenticated() and askbot_settings.GROUPS_ENABLED:
             #get post with groups shared with having at least 
             #one of the user groups
             #of those posts return the latest revision

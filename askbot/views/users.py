@@ -77,12 +77,24 @@ def clear_new_notifications(request):
     activity_types += (
         const.TYPE_ACTIVITY_MENTION,
     )
+    post_data = simplejson.loads(request.raw_post_data)
     memo_set = models.ActivityAuditStatus.objects.filter(
+        id__in=post_data['memo_ids'],
         activity__activity_type__in=activity_types,
-        user=user
+        user=user,
     )
     memo_set.update(status = models.ActivityAuditStatus.STATUS_SEEN)
     user.update_response_counts()
+
+@decorators.ajax_only
+def delete_notifications(request):
+    post_data = simplejson.loads(request.raw_post_data)
+    memo_set = models.ActivityAuditStatus.objects.filter(
+        id__in=post_data['memo_ids'],
+        user=request.user
+    )
+    memo_set.delete()
+    request.user.update_response_counts()
 
 def show_users(request, by_group=False, group_id=None, group_slug=None):
     """Users view, including listing of users by group"""
@@ -855,9 +867,10 @@ def user_network(request, user, context):
     if 'followit' not in django_settings.INSTALLED_APPS:
         raise Http404
     data = {
-        'tab_name': 'network',
         'followed_users': user.get_followed_users(),
         'followers': user.get_followers(),
+        'page_title' : _('profile - network'),
+        'tab_name': 'network',
     }
     context.update(data)
     return render(request, 'user_profile/user_network.html', context)

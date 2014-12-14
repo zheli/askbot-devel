@@ -10,6 +10,7 @@ from django.core.cache.backends.locmem import LocMemCache
 
 from django.core.exceptions import ValidationError
 from django.template.loader import get_template
+from django.template import Context
 from askbot.tests.utils import AskbotTestCase
 from askbot.models import Post
 from askbot.models import PostRevision
@@ -329,7 +330,7 @@ class ThreadRenderLowLevelCachingTests(AskbotTestCase):
             'search_state': ss,
             'visitor': None
         }
-        proper_html = get_template('widgets/question_summary.html').render(context)
+        proper_html = get_template('widgets/question_summary.html').render(Context(context))
         self.assertEqual(test_html, proper_html)
 
         # Make double-check that all tags are included
@@ -355,7 +356,7 @@ class ThreadRenderLowLevelCachingTests(AskbotTestCase):
         ss = ss.add_tag('mini-mini')
         context['search_state'] = ss
         test_html = thread.get_summary_html(search_state=ss)
-        proper_html = get_template('widgets/question_summary.html').render(context)
+        proper_html = get_template('widgets/question_summary.html').render(Context(context))
 
         self.assertEqual(test_html, proper_html)
 
@@ -384,7 +385,7 @@ class ThreadRenderLowLevelCachingTests(AskbotTestCase):
             'question': self.q,
             'search_state': DummySearchState(),
         }
-        html = get_template('widgets/question_summary.html').render(context)
+        html = get_template('widgets/question_summary.html').render(Context(context))
         filled_html = html.replace('<<<tag1>>>', SearchState.get_empty().add_tag('tag1').full_url())\
                           .replace('<<<tag2>>>', SearchState.get_empty().add_tag('tag2').full_url())\
                           .replace('<<<tag3>>>', SearchState.get_empty().add_tag('tag3').full_url())
@@ -439,7 +440,8 @@ class ThreadRenderCacheUpdateTests(AskbotTestCase):
         self.user2.save()
 
         self.old_cache = cache.cache
-        cache.cache = LocMemCache('', {})  # Enable local caching
+        cache.cache = LocMemCache('', {'OPTIONS':{'MAX_ENTRIES': 1000000}})  # Enable local caching
+        cache.cache.clear()
 
     def tearDown(self):
         cache.cache = self.old_cache  # Restore caching
@@ -451,8 +453,9 @@ class ThreadRenderCacheUpdateTests(AskbotTestCase):
             'search_state': DummySearchState(),
             'visitor': None
         }
-        html = get_template('widgets/question_summary.html').render(context)
-        return html
+        return get_template(
+            'widgets/question_summary.html'
+        ).render(Context(context))
 
     def test_post_question(self):
         self.assertEqual(0, Post.objects.count())
@@ -609,6 +612,7 @@ class ThreadRenderCacheUpdateTests(AskbotTestCase):
         self.assertEqual(0, question.thread.view_count)
         self.assertEqual(0, Thread.objects.all()[0].view_count)
         self.client.logout()
+
         # INFO: We need to pass some headers to make question() view believe we're not a robot
         self.client.get(
             urlresolvers.reverse('question', kwargs={'id': question.id}),
