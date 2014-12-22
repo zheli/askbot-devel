@@ -167,6 +167,12 @@ urlpatterns = patterns('',
     service_url(r'^%s$' % _('about/'), views.meta.about, name='about'),
     service_url(r'^%s$' % _('faq/'), views.meta.faq, name='faq'),
     service_url(r'^%s$' % _('privacy/'), views.meta.privacy, name='privacy'),
+    service_url(
+        r'^%s$' % _('terms/'),
+        views.meta.markdown_flatpage,
+        kwargs={'setting_name': 'TERMS', 'page_class': 'terms-page'},
+        name='terms'
+    ),
     service_url(r'^%s$' % _('help/'), views.meta.help, name='help'),
     service_url(
         r'^%s(?P<id>\d+)/%s$' % (_('answers/'), _('edit/')),
@@ -322,7 +328,7 @@ urlpatterns = patterns('',
         name='delete_comment'
     ),
     service_url(#ajax only
-        r'^comment/get_text/$',
+        r'^comment/get-text/$',
         views.readers.get_comment,
         name='get_comment'
     ),

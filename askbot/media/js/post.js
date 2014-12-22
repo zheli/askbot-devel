@@ -234,7 +234,7 @@ ThreadUsersDialog.prototype.decorate = function(element) {
     dialog.setAcceptHandler(function(){ dialog.hide(); });
     var dialog_element = dialog.getElement();
     $(dialog_element).find('.modal-footer').css('text-align', 'center');
-    $(document).append(dialog_element);
+    $('body').append(dialog_element);
     this._dialog = dialog;
     var me = this;
     this.setHandler(function(){
@@ -390,6 +390,7 @@ MergeQuestionsDialog.prototype.createDom = function() {
     this.setAcceptHandler(this.getStartMergingHandler());
 
     MergeQuestionsDialog.superClass_.createDom.call(this);
+    this._element.hide();
 
     this._fromId = $('.post.question').data('postId');
 };
@@ -563,7 +564,7 @@ inherits(CommentVoteButton, SimpleControl);
 CommentVoteButton.prototype.setScore = function(score){
     this._score = score;
     if (this._element){
-        this._element.html(score);
+        this._element.html(score || '');
     }
 };
 /**
@@ -659,7 +660,6 @@ var Vote = function(){
     var imgIdPrefixAnswerVoteup = 'answer-img-upvote-';
     var imgIdPrefixAnswerVotedown = 'answer-img-downvote-';
     var divIdFavorite = 'favorite-number';
-    var commentLinkIdPrefix = 'comment-';
     var voteNumberClass = "vote-number";
     var offensiveIdPrefixQuestionFlag = 'question-offensive-flag-';
     var removeOffensiveIdPrefixQuestionFlag = 'question-offensive-remove-flag-';
@@ -929,16 +929,11 @@ var Vote = function(){
             );
             showMessage(object, message);
         } else if (data.status == "1") {
-            $("#"+answerContainerIdPrefix+postId).removeClass("accepted-answer");
-            $("#"+commentLinkIdPrefix+postId).removeClass("comment-link-accepted");
+            $("#" + answerContainerIdPrefix + postId).removeClass("accepted-answer");
         } else if (data.success == "1") {
             var answers = ('div[id^="'+answerContainerIdPrefix +'"]');
             $(answers).removeClass('accepted-answer');
-            var commentLinks = ('div[id^="'+answerContainerIdPrefix +'"] div[id^="'+ commentLinkIdPrefix +'"]');
-            $(commentLinks).removeClass("comment-link-accepted");
-
-            $("#"+answerContainerIdPrefix+postId).addClass("accepted-answer");
-            $("#"+commentLinkIdPrefix+postId).addClass("comment-link-accepted");
+            $("#" + answerContainerIdPrefix + postId).addClass("accepted-answer");
         } else {
             showMessage(object, data.message);
         }
@@ -1795,7 +1790,7 @@ EditCommentForm.prototype.attachTo = function(comment, mode){
     this._text = comment.getText();
     comment.getElement().after(this.getElement());
     comment.getElement().hide();
-    this._commentsWidget.hideButton();//hide add comment button
+    this._commentsWidget.hideOpenEditorButton();//hide add comment button
     //fix up the comment submit button, depending on the mode
     if (this._type == 'add'){
         this._submit_btn.html(gettext('add comment'));
@@ -1920,7 +1915,7 @@ EditCommentForm.prototype.detach = function(){
     if (this._comment === null){
         return;
     }
-    this._comment.getContainerWidget().showButton();
+    this._comment.getContainerWidget().showOpenEditorButton();
     if (this._comment.isBlank()){
         this._comment.dispose();
     } else {
@@ -2023,7 +2018,6 @@ EditCommentForm.prototype.setSuppressEmail = function(bool) {
 };
 
 EditCommentForm.prototype.getSaveHandler = function(){
-
     var me = this;
     var editor = this._editor;
     return function(){
@@ -2053,7 +2047,10 @@ EditCommentForm.prototype.getSaveHandler = function(){
             'comment_added_at': timestamp
         });
         me._comment.setDraftStatus(true);
-        me._comment.getContainerWidget().showButton();
+        var postCommentsWidget = me._comment.getContainerWidget();
+        postCommentsWidget.showOpenEditorButton();
+        var commentsElement = postCommentsWidget.getElement(); 
+        commentsElement.trigger('askbot.beforeCommentSubmit');
 
         var post_data = {
             comment: text
@@ -2064,8 +2061,7 @@ EditCommentForm.prototype.getSaveHandler = function(){
             post_url = askbot['urls']['editComment'];
             post_data['suppress_email'] = me.getSuppressEmail();
             me.setSuppressEmail(false);
-        }
-        else {
+        } else {
             post_data['post_type'] = me._comment.getParentType();
             post_data['post_id'] = me._comment.getParentId();
             post_url = askbot['urls']['postComments'];
@@ -2087,6 +2083,7 @@ EditCommentForm.prototype.getSaveHandler = function(){
                 }
                 me.setWaitingStatus(false);
                 me.detach();
+                commentsElement.trigger('askbot.afterCommentSubmitSuccess');
             },
             error: function(xhr, textStatus, errorThrown) {
                 me._comment.getElement().show();
@@ -2095,6 +2092,7 @@ EditCommentForm.prototype.getSaveHandler = function(){
                 me.setWaitingStatus(false);
                 me.detach();
                 me.enableForm();
+                commentsElement.trigger('askbot.afterCommentSubmitError');
             }
         });
         return false;
@@ -2143,15 +2141,16 @@ Comment.prototype.startEditing = function() {
 
 Comment.prototype.decorate = function(element){
     this._element = $(element);
-    var parent_type = this._element.parent().parent().attr('id').split('-')[2];
-    var comment_id = this._element.attr('id').replace('comment-','');
-    this._data = {id: comment_id};
+    var parent_type = this._element.closest('.comments').data('parentPostType');
+    var comment_id = this._element.data('commentId');
+    this._data = {'id': comment_id};
 
     this._contentBox = this._element.find('.comment-content');
 
-    var timestamp = this._element.find('abbr.timeago');
+    var timestamp = this._element.find('.timeago');
+    this._dateElement = timestamp;
     this._data['comment_added_at'] = timestamp.attr('title');
-    var userLink = this._element.find('a.author');
+    var userLink = this._element.find('.author');
     this._data['user_display_name'] = userLink.html();
     // @todo: read other data
 
@@ -2160,14 +2159,14 @@ Comment.prototype.decorate = function(element){
         this._comment_body = commentBody;
     }
 
-    var delete_img = this._element.find('span.delete-icon');
+    var delete_img = this._element.find('.delete-icon');
     if (delete_img.length > 0){
         this._deletable = true;
         this._delete_icon = new DeleteIcon(this.deletePrompt);
         this._delete_icon.setHandler(this.getDeleteHandler());
         this._delete_icon.decorate(delete_img);
     }
-    var edit_link = this._element.find('a.edit');
+    var edit_link = this._element.find('.edit');
     if (edit_link.length > 0){
         this._editable = true;
         this._edit_link = new EditLink();
@@ -2175,7 +2174,7 @@ Comment.prototype.decorate = function(element){
         this._edit_link.decorate(edit_link);
     }
 
-    var convert_link = this._element.find('form.convert-comment');
+    var convert_link = this._element.find('.convert-comment');
     if (this._is_convertible){
         this._convert_link = new CommentConvertLink(comment_id); 
         this._convert_link.decorate(convert_link);
@@ -2187,9 +2186,12 @@ Comment.prototype.decorate = function(element){
     };
 
     var vote = new CommentVoteButton(this);
-    vote.decorate(this._element.find('.comment-votes .upvote'));
+    vote.decorate(this._element.find('.upvote'));
+    this._voteButton = vote;
 
-    this._blank = false;
+    this._userLink = this._element.find('.author');
+
+    this._blank = (this.getId() === undefined);
 };
 
 Comment.prototype.setDraftStatus = function(isDraft) {
@@ -2237,108 +2239,56 @@ Comment.prototype.getParentId = function(){
 
 /**
  * this function is basically an "updateDom"
- * for which we don't have the convention
  */
 Comment.prototype.setContent = function(data){
     this._data = $.extend(this._data, data);
-    this._element.addClass('comment');
-    this._element.css('display', 'table');//@warning: hardcoded
-    //display is set to "block" if .show() is called, but we need table.
-    this._element.attr('id', 'comment-' + this._data['id']);
+    data = this._data;
+    this._element.data('commentId', data['id']);
 
     // 1) create the votes element if it is not there
-    var votesBox = this._element.find('.comment-votes');
-    if (votesBox.length === 0) {
-        votesBox = this.makeElement('div');
-        votesBox.addClass('comment-votes');
-        this._element.append(votesBox);
+    var vote = this._voteButton;
+    vote.setVoted(data['upvoted_by_user']);
+    vote.setScore(data['score']);
 
-        var vote = new CommentVoteButton(this);
-        if (this._data['upvoted_by_user']){
-            vote.setVoted(true);
-        }
-        vote.setScore(this._data['score']);
-        var voteElement = vote.getElement();
+    // 2) maybe adjust deletable status
 
-        votesBox.append(vote.getElement());
-    } 
-
-    // 2) create the comment content container
-    if (this._contentBox === undefined) {
-        var contentBox = this.makeElement('div');
-        contentBox.addClass('comment-content');
-        this._contentBox = contentBox;
-        this._element.append(contentBox);
-    }
-
-    // 2) create the comment deleter if it is not there
-    if (this._comment_delete === undefined) {
-        this._comment_delete = $('<div class="comment-delete"></div>');
-        if (this._deletable){
-            this._delete_icon = new DeleteIcon(this._delete_prompt);
-            this._delete_icon.setHandler(this.getDeleteHandler());
-            this._comment_delete.append(this._delete_icon.getElement());
-        }
-        this._contentBox.append(this._comment_delete);
-    }
-
-    // 3) create or replace the comment body
-    if (this._comment_body === undefined) {
-        this._comment_body = $('<div class="comment-body"></div>');
-        this._contentBox.append(this._comment_body);
-    }
+    // 3) set the comment html
     if (EditCommentForm.prototype.getEditorType() === 'tinymce') {
         var theComment = $('<div/>');
-        theComment.html(this._data['html']);
+        theComment.html(data['html']);
         //sanitize, just in case
         this._comment_body.empty();
         this._comment_body.append(theComment);
-        this._data['text'] = this._data['html'];
+        this._data['text'] = data['html'];
     } else {
         this._comment_body.empty();
-        this._comment_body.html(this._data['html']);
+        this._comment_body.html(data['html']);
     }
-    //this._comment_body.append(' &ndash; ');
 
-    // 4) create user link if absent
-    if (this._user_link !== undefined) {
-        this._user_link.detach();
-        this._user_link = undefined;
-    }
-    this._user_link = $('<a></a>').attr('class', 'author');
-    this._user_link.attr('href', this._data['user_url']);
-    this._user_link.html(this._data['user_display_name']);
-    this._comment_body.append(' ');
-    this._comment_body.append(this._user_link);
+    // 4) update user info
+    this._userLink.attr('href', data['user_url']);
+    this._userLink.html(data['user_display_name']);
 
-    // 5) create or update the timestamp
-    if (this._comment_added_at !== undefined) {
-        this._comment_added_at.detach();
-        this._comment_added_at = undefined;
-    }
-    this._comment_body.append(' (');
-    this._comment_added_at = $('<abbr class="timeago"></abbr>');
-    this._comment_added_at.html(this._data['comment_added_at']);
-    this._comment_added_at.attr('title', this._data['comment_added_at']);
-    this._comment_added_at.timeago();
-    this._comment_body.append(this._comment_added_at);
-    this._comment_body.append(')');
+    // 5) update the timestamp
+    this._dateElement.html(data['comment_added_at']);
+    this._dateElement.attr('title', data['comment_added_at']);
+    this._dateElement.timeago();
 
     if (this._editable) {
-        if (this._edit_link !== undefined) {
-            this._edit_link.dispose();
-        }
+        var oldEditLink = this._edit_link;
         this._edit_link = new EditLink();
         this._edit_link.setHandler(this.getEditHandler())
-        this._comment_body.append(this._edit_link.getElement());
+        oldEditLink.getElement().replaceWith(this._edit_link.getElement());
+        oldEditLink.dispose();
     }
 
     if (this._is_convertible) {
         if (this._convert_link !== undefined) {
             this._convert_link.dispose();
         }
+        var oldConvertLink = this._convert_link;
         this._convert_link = new CommentConvertLink(this._data['id']); 
-        this._comment_body.append(this._convert_link.getElement());
+        oldConvertLink.getElement().replaceWith(this._convert_link.getElement());
     }
     this._blank = false;
 };
@@ -2452,32 +2402,39 @@ var PostCommentsWidget = function(){
 inherits(PostCommentsWidget, WrappedElement);
 
 PostCommentsWidget.prototype.decorate = function(element){
-    var element = $(element);
     this._element = element;
-
-    var widget_id = element.attr('id');
-    var id_bits = widget_id.split('-');
-    this._post_id = id_bits[3];
-    this._post_type = id_bits[2];
-    this._is_truncated = askbot['data'][widget_id]['truncated'];
-    this._user_can_post = askbot['data'][widget_id]['can_post'];
+    this._post_id = element.data('parentPostId');
+    this._post_type = element.data('parentPostType');
+    //var widget_id = element.attr('id');
+    //this._userCanPost = askbot['data'][widget_id]['can_post'];
+    this._commentsReversed = askbot['settings']['commentsReversed'];
 
     //see if user can comment here
-    var controls = element.find('.controls');
-    this._activate_button = controls.find('.button');
+    this._loadCommentsButton = element.find('.js-load-comments-btn');
 
-    if (this._user_can_post == false){
-        setupButtonEventHandlers(
-            this._activate_button,
-            this.getReadOnlyLoadHandler()
-        );
+    if (this._loadCommentsButton.length) {
+        if (this._commentsReversed/* || this._userCanPost */){
+            setupButtonEventHandlers(
+                this._loadCommentsButton,
+                this.getLoadCommentsHandler()
+            );
+        } else {
+            setupButtonEventHandlers(
+                this._loadCommentsButton,
+                this.getAllowEditHandler()
+            );
+        }
     }
-    else {
+
+    this._openEditorButton = element.find('.js-open-editor-btn');
+    if (this._openEditorButton.length) {
         setupButtonEventHandlers(
-            this._activate_button,
-            this.getActivateHandler()
-        );
+            this._openEditorButton,
+            this.getOpenEditorHandler()
+        )
     }
+
+    this._isTruncated = this._openEditorButton.hasClass('hidden');
 
     this._cbox = element.find('.content');
     var comments = new Array();
@@ -2494,43 +2451,58 @@ PostCommentsWidget.prototype.handleDeletedComment = function() {
     /* if the widget does not have any comments, set
     the 'empty' class on the widget element */
     if (this._cbox.children('.comment').length === 0) {
-        this._element.siblings('.comment-title').hide();
+        if (this._commentsReversed === false) {
+            this._element.siblings('.comment-title').hide();
+        }
         this._element.addClass('empty');
     }
 };
 
-PostCommentsWidget.prototype.getPostType = function(){
+PostCommentsWidget.prototype.getPostType = function() {
     return this._post_type;
 };
 
-PostCommentsWidget.prototype.getPostId = function(){
+PostCommentsWidget.prototype.getPostId = function() {
     return this._post_id;
 };
 
-PostCommentsWidget.prototype.hideButton = function(){
-    this._activate_button.hide();
+PostCommentsWidget.prototype.getLoadCommentsButton = function() {
+    return this._loadCommentsButton;
 };
 
-PostCommentsWidget.prototype.showButton = function(){
-    if (this._is_truncated === false){
-        this._activate_button.html(askbot['messages']['addComment']);
-    }
-    this._activate_button.show();
-}
+PostCommentsWidget.prototype.getOpenEditorButton = function() {
+    return this._openEditorButton;
+};
 
-PostCommentsWidget.prototype.startNewComment = function(){
-    var opts = {
-        'is_deletable': true,
-        'is_editable': true
-    };
-    var comment = new Comment(this, opts);
-    this._cbox.append(comment.getElement());
+PostCommentsWidget.prototype.hideOpenEditorButton = function() {
+    this._openEditorButton.hide();
+    this._openEditorButton.addClass('hidden');
+};
+
+PostCommentsWidget.prototype.showOpenEditorButton = function() {
+    this._openEditorButton.show();
+    this._openEditorButton.removeClass('hidden');
+};
+
+PostCommentsWidget.prototype.startNewComment = function() {
+    //find comment template, clone it's dom
+    var comment = new Comment(this);
+    var template = $($('.comment-template').children()[0]);
+    var commentElem = template.clone(false);
+    if (this._commentsReversed) {
+        this._cbox.prepend(commentElem);
+    } else {
+        this._cbox.append(commentElem);
+    }
+    commentElem.show();
+    comment.decorate(commentElem);
     this._element.removeClass('empty');
+    this._element.trigger('askbot.beforeCommentStart');
     comment.startEditing();
 };
 
 PostCommentsWidget.prototype.needToReload = function(){
-    return this._is_truncated;
+    return this._commentsReversed === false && this._isTruncated;
 };
 
 PostCommentsWidget.prototype.userCanPost = function() {
@@ -2546,38 +2518,42 @@ PostCommentsWidget.prototype.userCanPost = function() {
     return false;
 };
 
-PostCommentsWidget.prototype.getActivateHandler = function(){
+PostCommentsWidget.prototype.getAllowEditHandler = function() {
     var me = this;
-    var button = this._activate_button;
     return function() {
-        if (me.needToReload()){
-            me.reloadAllComments(function(json){
-                me.reRenderComments(json);
-                //2) change button text to "post a comment"
-                button.html(askbot['messages']['addComment']);
-            });
-        }
-        else {
-            //if user can't post, we tell him something and refuse
-            if (askbot['settings']['readOnlyModeEnabled'] === true) {
-                var message = askbot['messages']['readOnlyMessage'];
-                showMessage(button, message, 'after');
-            } else if (askbot['data']['userIsAuthenticated']) {
-                me.startNewComment();
-            } else {
-                var message = gettext('please sign in or register to post comments');
-                showMessage(button, message, 'after');
-            }
+        me.reloadAllComments(function(json) {
+            me.reRenderComments(json);
+            //2) change button text to "post a comment"
+            me.getLoadCommentsButton().remove();
+            me.showOpenEditorButton();
+        });
+    };
+};
+
+PostCommentsWidget.prototype.getOpenEditorHandler = function() {
+    var me = this;
+    return function() {
+        //if user can't post, we tell him something and refuse
+        if (askbot['settings']['readOnlyModeEnabled'] === true) {
+            var message = askbot['messages']['readOnlyMessage'];
+            showMessage(button, message, 'after');
+        } else if (askbot['data']['userIsAuthenticated']) {
+            me.startNewComment();
+        } else {
+            var message = gettext(
+                'please sign in or register to post comments'
+            );
+            showMessage(button, message, 'after');
         }
     };
 };
 
-PostCommentsWidget.prototype.getReadOnlyLoadHandler = function(){
+PostCommentsWidget.prototype.getLoadCommentsHandler = function() {
     var me = this;
-    return function(){
-        me.reloadAllComments(function(json){
+    return function() {
+        me.reloadAllComments(function(json) {
             me.reRenderComments(json);
-            me._activate_button.remove();
+            me.getLoadCommentsButton().remove();
         });
     };
 };
@@ -2592,7 +2568,7 @@ PostCommentsWidget.prototype.reloadAllComments = function(callback){
         data: post_data,
         success: function(json){
             callback(json);
-            me._is_truncated = false;
+            me._isTruncated = false;
         },
         dataType: "json"
     });
@@ -2602,11 +2578,16 @@ PostCommentsWidget.prototype.reRenderComments = function(json){
     $.each(this._comments, function(i, item){
         item.dispose();
     });
-    this._comments = new Array();
+    this._comments = [];
     var me = this;
     $.each(json, function(i, item){
-        var comment = new Comment(me, item);
-        me._cbox.append(comment.getElement());
+        var comment = new Comment(me);
+        var template = $($('.comment-template').children()[0]);
+        var commentElem = template.clone(false);
+        me._cbox.append(commentElem);
+        commentElem.show();
+        comment.decorate(commentElem);
+        comment.setContent(item);
         me._comments.push(comment);
     });
 };
@@ -4840,9 +4821,9 @@ inherits(AskButton, SimpleControl);
 
 
 $(document).ready(function() {
-    $('[id^="comments-for-"]').each(function(index, element){
+    $('.comments').each(function(index, element){
         var comments = new PostCommentsWidget();
-        comments.decorate(element);
+        comments.decorate($(element));
     });
     $('[id^="swap-question-with-answer-"]').each(function(idx, element){
         var swapper = new QASwapper();
@@ -4949,7 +4930,7 @@ $(document).ready(function() {
 
     if (askbot['data']['userIsThreadModerator']) {
         var mergeQuestions = new MergeQuestionsDialog();
-        $(document).append(mergeQuestions.getElement());
+        $('body').append(mergeQuestions.getElement());
         var mergeBtn = $('.question-merge');
         setupButtonEventHandlers(mergeBtn, function() { 
             mergeQuestions.show(); 
