@@ -169,7 +169,7 @@ msgstr[0] ""
 
 #: media/js/post.js:232
 msgid "Back to the question"
-msgstr "回到问题"
+msgstr "返回问题"
 
 #: media/js/post.js:332
 msgid "Merge"
