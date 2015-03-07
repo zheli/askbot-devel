@@ -155,14 +155,12 @@
 
 {%- macro tag_list_widget(
         tags,
-        id = None,
-        deletable = False,
-        make_links = True,
-        search_state = None,
-        css_class = None,
-        tag_css_class = None,
-        tag_html_tag = 'li',
-        truncate_long_tags = False
+        id=None,
+        deletable=False,
+        make_links=True,
+        search_state=None,
+        css_class=None,
+        truncate_long_tags=False
     )
 -%}
 <ul {% if id %}id="{{ id }}"{% endif %}
@@ -170,15 +168,15 @@
 >
     {% if tags %}
         {% for tag in tags %}
+        <li>
             {{ tag_widget(
                 tag,
-                css_class = tag_css_class,
-                deletable = deletable,
-                is_link = make_links,
-                search_state = search_state,
-                html_tag = tag_html_tag,
-                truncate_long_tag = False
+                deletable=deletable,
+                is_link=make_links,
+                search_state=search_state,
+                truncate_long_tag=False
             )}}
+        </li>
         {% endfor %}
     {% endif %}
 </ul>
@@ -230,8 +228,9 @@
 -%}
     {% if acceptance_level in ('open', 'moderated') %}
         <button 
-            class="group-join-btn button follow-toggle {% if membership_level != 'none' %}on on-state{% endif %}"
+            class="group-join-btn button"
             data-group-id="{{group_id}}"
+            data-is-on="{{ membership_level|not_equal('none')|as_js_bool }}"
             {% if acceptance_level == 'open' %}
                 data-off-prompt-text="{% trans %}Leave this group{% endtrans %}"
                 data-on-prompt-text="{% trans %}Join this group{% endtrans %}"
@@ -267,42 +266,39 @@
 {# todo: remove the extra content argument to make its usage more explicit #}
 {%- macro tag_widget(
             tag,
-            deletable = False,
-            is_link = True,
-            delete_link_title = None,
-            css_class = None,
-            search_state = None,
-            html_tag = 'div',
-            extra_content = '',
-            truncate_long_tag = False
+            deletable=False,
+            is_link=True,
+            css_class=None,
+            search_state=None,
+            extra_content='',
+            truncate_long_tag=False
         )
 -%}
   {% if not search_state %}  {#  get empty SearchState() if there's none; CAUTION: for some reason this doesn't work inside `spaceless` tag below! #}
       {% set search_state=search_state|get_empty_search_state %}
   {% endif %}
   {% spaceless %}
-    <{{ html_tag }} class="tag-left{% if deletable %} deletable-tag{% endif %}">
-    <{% if not is_link or tag[-1] == '*' %}span{% else %}a{% endif %}
-            class="tag tag-right{% if css_class %} {{ css_class }}{% endif %}"
+    <div class="js-tag {% if deletable %} js-deletable-tag{% endif %}">
+        <{% if is_link %}a{% else %}span{% endif %}
+            class="js-tag-name{% if css_class %} {{ css_class }}{% endif %}"
+            rel="tag"
             {% if is_link %}
             href="{{ search_state.add_tag(tag).full_url() }}"
             {% endif %}
-            rel="tag"
             data-tag-name="{{ tag|replace('*', '&#10045;')|escape }}"
         >{% if truncate_long_tag -%}
-            {{ tag|replace('*', '&#10045;')|truncate(17, True)|escape }}
-        {%- else -%}
-            {{ tag|replace('*', '&#10045;')|escape }}
-        {%- endif %}</{% if not is_link or tag[-1] == '*' %}span{% else %}a{% endif %}>
+                {{ tag|replace('*', '&#10045;')|truncate(17, True)|escape }}
+            {%- else -%}
+                {{ tag|replace('*', '&#10045;')|escape }}
+            {%- endif -%}
+        </{% if is_link %}a{% else %}span{% endif %}>
         {% if deletable %}
-            <div class="delete-icon"
-                {% if delete_link_title %}
-                    title="{{ delete_link_title }}"
-                {% endif %}
-            >x</div>
+            <span class="js-delete-icon">&times;</span>
         {% endif %}
-    </{{ html_tag }}>
-    {{ extra_content }}
+        {% if extra_content %}
+        <span class="js-tag-extra-content">{{ extra_content }}</span>
+        {% endif %}
+    </div>
   {% endspaceless %}
 {%- endmacro -%}
 
@@ -356,10 +352,10 @@ for the purposes of the AJAX comment editor #}
     </div>
 {%- endmacro -%}
 
-{%- macro comment_widget(comment) -%}
+{%- macro comment_widget(comment, csrf_token=None) -%}
     {# Warning! Any changes to the comment markup must be duplicated in post.js
        for the purposes of the AJAX comment editor #}
-    <div class="comment" data-comment-id="{{ comment.id }}">
+    <div class="comment js-comment" data-comment-id="{{ comment.id }}">
         <div class="comment-votes">
             {% if comment.score > 0 %}
                 <div 
@@ -375,7 +371,7 @@ for the purposes of the AJAX comment editor #}
         </div>
         <div class="comment-content">
             <div id="post-{{ comment.id }}-delete" class="comment-delete">
-                <span class="delete-icon" title="{% trans %}delete this comment{% endtrans %}"></span>
+                <span class="js-delete-icon" title="{% trans %}delete this comment{% endtrans %}"></span>
             </div>
             {% if comment.needs_moderation() %}
                 <p class="moderated">{% trans %}This post is awaiting moderation{% endtrans %}</p>
@@ -384,6 +380,8 @@ for the purposes of the AJAX comment editor #}
                 {{ comment.summary }}
             </div>
             <div class="comment-controls">
+                {# important - the same number for avatar size must be in question/javascript.html #}
+                {{ gravatar(comment.author, 16) }}
                 <a 
                     class="author"
                     href="{{ comment.author.get_profile_url() }}"
@@ -406,17 +404,19 @@ for the purposes of the AJAX comment editor #}
             </div>
         </div>
     </div>
+    {% if comment.id %}
     <script type="text/javascript">
         askbot['functions']['hideConvertLinks']();
         askbot['functions']['renderPostControls']('{{ comment.id }}');
     </script>
+    {% endif %}
 {%- endmacro -%}
 
 {%- macro post_comments_widget(
         post=None,
-        show_post = None,
-        show_comment = None,
-        show_comment_position = None,
+        show_post=None,
+        show_comment=None,
+        show_comment_position=None,
         user=None,
         max_comments=None,
         csrf_token=None
@@ -445,7 +445,7 @@ for the purposes of the AJAX comment editor #}
         {% endif %}
         <div class="content">
             {% for comment in comments %}
-                {{ comment_widget(comment) }}
+                {{ comment_widget(comment, csrf_token) }}
             {% endfor %}
         </div>
         <div class="controls">
@@ -499,9 +499,9 @@ for the purposes of the AJAX comment editor #}
 {%- macro checkbox_in_div(checkbox_field, class = 'checkbox') -%}
     <div{% if class %} class="{{class}}"{% endif %}
         title="{{checkbox_field.help_text}}">
+        {{ checkbox_field.errors }}
         {{ checkbox_field }} 
         {{ checkbox_field.label_tag() }} 
-        {{ checkbox_field.errors }}
     </div>
 {%- endmacro -%}
 
@@ -532,38 +532,7 @@ for the purposes of the AJAX comment editor #}
 {%- endmacro -%}
 
 {%- macro answer_classes(answer, question) -%}
- {% if answer.accepted() %}accepted-answer{% endif %} {% if answer.author_id==question.author_id %} answered-by-owner{% endif %} {% if answer.deleted %}deleted{% endif -%}
-{%- endmacro -%}
-
-{%- macro follow_toggle(follow, name, alias, id) -%}
-    {# follow - boolean; name - object type name; alias - e.g. users name; id - object id #}
-    <div 
-        class="button follow-toggle follow-user-toggle" 
-        id="follow-{{ name|escape }}-{{ id }}"
-    >
-        {% if follow %}
-        <div class="follow">{% trans %}follow {{alias}}{% endtrans %}</div>
-        {% else %}
-        <div class="unfollow">
-          <div class="unfollow-red">{% trans %}unfollow {{alias}}{% endtrans %}</div>
-          <div class="unfollow-green">{% trans %}following {{alias}}{% endtrans %}</div>
-        </div>
-        {% endif %}
-    </div>
-{%- endmacro -%}
-
-{%- macro follow_user_toggle(visitor = None, subject = None) -%}
-    {% if visitor.is_anonymous() %}
-        {{ follow_toggle(True, 'user', subject.username|escape, subject.id) }}
-    {% else %}
-        {% if visitor != subject %}
-            {% if visitor.is_following(subject) %}
-                {{ follow_toggle(False, 'user', subject.username|escape, subject.id) }}
-            {% else %}
-                {{ follow_toggle(True, 'user', subject.username|escape, subject.id) }}
-            {% endif %}
-        {% endif %}
-    {% endif %}
+ {% if answer.endorsed %}accepted-answer{% endif %} {% if answer.author_id==question.author_id %} answered-by-owner{% endif %} {% if answer.deleted %}deleted{% endif -%}
 {%- endmacro -%}
 
 {%- macro user_long_score_and_badge_summary(user) -%}
@@ -619,9 +588,9 @@ for the purposes of the AJAX comment editor #}
 {#todo: rename this to avatar #}
 {%- macro gravatar(user, size) -%}
 {% spaceless %}
-<a class="avatar-box"
+<a class="js-avatar-box"
     href="{{ user.get_absolute_url() }}"
-><img class="gravatar" 
+><img class="js-avatar gravatar" 
     width="{{size}}" height="{{size}}"
     src="{{ user.get_avatar_url(size) }}"
     title="{{user.username|escape}}" 
@@ -696,7 +665,7 @@ for the purposes of the AJAX comment editor #}
                     title="{% trans num=p.pages %}page {{ num }}{% endtrans %}"
                 >{{ p.pages }}</a>
             </span>
-        <span>
+        </span>
 
         {# "next" nav link #}
         <span class="next"

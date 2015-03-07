@@ -150,20 +150,6 @@ settings.register(
 )
 
 settings.register(
-    livesettings.BooleanValue(
-        FORUM_DATA_RULES,
-        'ALLOW_SWAPPING_QUESTION_WITH_ANSWER',
-        default = False,
-        description = _('Allow swapping answer with question'),
-        help_text = _(
-            'This setting will help import data from other forums '
-            'such as zendesk, when automatic '
-            'data import fails to detect the original question correctly.'
-        )
-    )
-)
-
-settings.register(
     livesettings.IntegerValue(
         FORUM_DATA_RULES,
         'MAX_TAG_LENGTH',
@@ -218,10 +204,19 @@ settings.register(
     livesettings.BooleanValue(
         FORUM_DATA_RULES,
         'LIMIT_ONE_ANSWER_PER_USER',
-        default = True,
-        description = _(
+        default=True,
+        description=_(
             'Limit one answer per question per user'
         )
+    )
+)
+
+settings.register(
+    livesettings.BooleanValue(
+        FORUM_DATA_RULES,
+        'COMMENTING_CLOSED_QUESTIONS_ENABLED',
+        default=True,
+        description=_('Allow commenting in closed questions')
     )
 )
 
@@ -231,6 +226,15 @@ settings.register(
         'ACCEPTING_ANSWERS_ENABLED',
         default=True,
         description = _('Enable accepting best answer')
+    )
+)
+
+settings.register(
+    livesettings.BooleanValue(
+        FORUM_DATA_RULES,
+        'SHOW_ACCEPTED_ANSWER_FIRST',
+        default=True,
+        description=_('Show accepted answer first')
     )
 )
 
@@ -360,8 +364,26 @@ settings.register(
     livesettings.BooleanValue(
         FORUM_DATA_RULES,
         'TAG_SEARCH_INPUT_ENABLED',
-        default = False,
-        description = _('Enable separate tag search box on main page')
+        default=False,
+        description=_('Enable separate tag search box on main page')
+    )
+)
+
+settings.register(
+    livesettings.BooleanValue(
+        FORUM_DATA_RULES,
+        'QUESTION_COMMENTS_ENABLED',
+        default=True,
+        description=_('Enable comments under questions')
+    )
+)
+
+settings.register(
+    livesettings.BooleanValue(
+       FORUM_DATA_RULES,
+       'ANSWER_COMMENTS_ENABLED',
+       default=True,
+       description=_('Enable comments under answers')
     )
 )
 
@@ -401,11 +423,8 @@ settings.register(
         FORUM_DATA_RULES,
         'USE_TIME_LIMIT_TO_EDIT_COMMENT',
         default = True,
-        description = _('Limit time to edit comments'),
-        help_text = _(
-                        'If unchecked, there will be no time '
-                        'limit to edit the comments'
-                    )
+        description=_('Limit time to edit comments'),
+        help_text=_('If unchecked, there will be no time limit')
     )
 )
 
@@ -413,9 +432,9 @@ settings.register(
     livesettings.IntegerValue(
         FORUM_DATA_RULES,
         'MINUTES_TO_EDIT_COMMENT',
-        default = 10,
-        description = _('Minutes allowed to edit a comment'),
-        help_text = _('To enable this setting, check the previous one')
+        default=10,
+        description=_('Minutes allowed to edit a comment'),
+        help_text=_('To enable this setting, check the previous one')
     )
 )
 
@@ -429,6 +448,46 @@ settings.register(
             'This may be useful when only one-line comments '
             'are desired. Will not work with TinyMCE editor.'
         )
+    )
+)
+
+settings.register(
+    livesettings.BooleanValue(
+        FORUM_DATA_RULES,
+        'USE_TIME_LIMIT_TO_EDIT_ANSWER',
+        defualt=False,
+        description=_('Limit time to edit answers'),
+        help_text=_('If unchecked, there will be no time limit')
+    )
+)
+
+settings.register(
+    livesettings.IntegerValue(
+        FORUM_DATA_RULES,
+        'MINUTES_TO_EDIT_ANSWER',
+        default = 300,
+        description=_('Minutes allowed to edit answers'),
+        help_text=_('To enable this setting, check the previous one')
+    )
+)
+
+settings.register(
+    livesettings.BooleanValue(
+        FORUM_DATA_RULES,
+        'USE_TIME_LIMIT_TO_EDIT_QUESTION',
+        defualt=False,
+        description=_('Limit time to edit questions'),
+        help_text=_('If unchecked, there will be no time limit')
+    )
+)
+
+settings.register(
+    livesettings.IntegerValue(
+        FORUM_DATA_RULES,
+        'MINUTES_TO_EDIT_QUESTION',
+        default = 300,
+        description = _('Minutes allowed to edit questions'),
+        help_text = _('To enable this setting, check the previous one')
     )
 )
 
@@ -487,3 +546,18 @@ settings.register(
         description=_('What should "unanswered question" mean?')
     )
 )
+
+settings.register(
+    livesettings.BooleanValue(
+        FORUM_DATA_RULES,
+        'ALLOW_SWAPPING_QUESTION_WITH_ANSWER',
+        default = False,
+        description = _('Allow swapping answer with question'),
+        help_text = _(
+            'This setting will help import data from other forums '
+            'such as zendesk, when automatic '
+            'data import fails to detect the original question correctly.'
+        )
+    )
+)
+

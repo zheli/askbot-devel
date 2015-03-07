@@ -1,6 +1,9 @@
 .group-messaging {
     padding-top: 25px;
 }
+.group-messaging td {
+    vertical-align: top;
+}
 ul.senders-list {
     padding: 0px;
     margin-left: 1em;
@@ -15,31 +18,31 @@ ul.senders-list {
 .senders-list .selected {
     font-weight: bold;
 }
-table.threads-list {
+table.js-thread-list {
     width: 100%;
     border-spacing: 0px;
 }
-.threads-list tr {
+.js-thread-list tr {
     height: 2em;
 }
-.threads-list td {
+.js-thread-list td {
     vertical-align: center;
 }
-.threads-list tr.new {
+.js-thread-list tr.new {
     font-weight: bold;
     color: #777;
 }
-.threads-list tr:hover {
+.js-thread-list tr:hover {
     background-color: #eff5f6;
 }
-.threads-list td.delete-or-restore {
+.js-thread-list td.delete-or-restore {
     width: 15px;
     background-image: none;
 }
-.threads-list tr:hover td.delete-or-restore {
+.js-thread-list tr:hover td.delete-or-restore {
     background: url(../images/delete.png) no-repeat center center;
 }
-.threads-list.trash tr:hover td.delete-or-restore {
+.js-thread-list.trash tr:hover td.delete-or-restore {
     background-image: url(../images/delete.png);
 }
 td.empty {
@@ -70,8 +73,7 @@ button.compose {
     margin-left: 20px;
 }
 .pm-editor {
-    padding-bottom: 10px;
-    margin-top: -25px;
+    padding: 0 0 10px 15px;
 }
 .pm-editor input[type="text"],
 .pm-editor textarea {
@@ -83,5 +85,7 @@ button.compose {
 }
 .pm-editor textarea {
     height: 200px;
+}
+.form-group {
     margin-bottom: 10px;
 }

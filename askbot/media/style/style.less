@@ -54,7 +54,6 @@ select {
 input[type="text"].prompt,
 input[type="password"].prompt,
 input.tipped-input.blank {
-    font-style: italic;
     color: @info-text;
 }
 
@@ -68,6 +67,7 @@ select,
 textarea,
 #askFormBar .questionTitleInput,
 .wmd-container,
+.js-simple-editor,
 .folded-editor,
 .mock-editor {
     border: #cce6ec 3px solid;
@@ -203,7 +203,7 @@ a:hover {
     text-decoration: underline;
 }
 
-.avatar-box {
+.js-avatar-box {
     text-decoration: none;
     width: 32px;
     height: 32px;
@@ -338,24 +338,56 @@ body.user-messages {
 
 .lang-nav {
     position: relative;
+    text-align: right;
+    margin-left: 20px;
+    text-transform: lowercase;
+    color:#d0e296;
+
+    .curr-lang {
+        text-decoration: underline;
+    }
+    .toggle {
+        font-size: 10px;
+        vertical-align: middle;
+    }
+    .fa {
+        font-size: 14px;
+        vertical-align: middle;
+    }
+
+    a:hover {
+        background: #666 !important;
+    }
+
+    a {
+        background: grey;
+        height: 22px !important;
+        text-align: left !important;
+    }
     ul {
+        background: grey;
         display: none;
         list-style: none;
-        z-index: 10000;
         margin: 0;
+        min-width: initial !important;
+        z-index: 10000;
     }
     &:hover ul,
     ul:hover {
         display: block;
         position: absolute;
-        width: 100px;
     }
     li {
+        background: grey;
         color: @info-text;
-        background: white;
         display: block;
     }
 }
+
+.lang-de .lang-nav {
+    text-transform: capitalize;
+}
+
 .select-language {
     margin-top: 6px;
 }
@@ -720,6 +752,35 @@ input[type="submit"].searchBtn {
     }
 }
 
+.badge-list .placeholder {
+    background: #aaa;
+    height: 5px;
+    list-style: none;
+}
+.badge-ctnr {
+    clear: both;
+    line-height: 30px;
+}
+.badge-awarded {
+    color: #5b9058;
+    font-size: 175%;
+    height: 30px;
+    min-width: 30px;
+    padding-right: 5px;
+    text-align: left;
+}
+.badge-item {
+    width: 230px;
+}
+.badge-description {
+   margin-top: 8px;
+}
+.badge-awarded,
+.badge-item,
+.badge-description {
+    display: inline-block;
+}
+
 .ask-page {
     input[type="submit"].searchBtn {
         display: none;
@@ -794,8 +855,12 @@ input[type="reset"],
     .text-shadow(0px,1px,0px,#c6d9dd);
     .linear-gradient(#d1e2e5,#a9c2c7);
     .rounded-corners(4px);
-    .box-shadow(1px, 1px, 2px, #636363)
+    .box-shadow(1px, 1px, 2px, #636363);
+    &:focus {
+        outline: none !important;
+    }
 }
+
 button.large,
 input[type="submit"].large,
 input[type="button"].large,
@@ -1034,37 +1099,13 @@ body.anon.ask-page .search-drop-menu {
 
 /* widgets for question template */
 
-    a.followed, a.follow {
-        height: 34px;
-        font-size: 21px;
-        line-height:34px;
-        border:0;
-        font-weight:normal;
-        margin-top:3px;
-        display:block;
-        .center;
-        width: 130px;
-    }
-
-    a.followed div.unfollow{
-        display:none;
-    }
-
-    a.followed:hover div{
-        display:none;
-    }
-    a.followed:hover div.unfollow{
-        display:inline;
-        color:#a05736;
-    }
-    
-    .favorite-number {
+    .js-question-follower-count {
         padding: 5px 0 0 5px;
         font-size: 100%;
         font-family: Arial;
         font-weight: bold;
         color: #777;
-        text-align:center;
+        text-align: center;
     }
 
     /* notify by email box */
@@ -1245,17 +1286,21 @@ body.anon.ask-page .search-drop-menu {
 }
 
 #listSearchTags{
-    float:left;
     margin-top:3px;
     color:@info-text;
     font-size:16px;
     font-family:@main-font;
+    ul.tags li {
+        margin: 0 5px 0 0;
+        padding: 0;
+        float: none;
+        display: inline-block;
+    }
 }
 
 ul#searchTags {
-    margin-left:10px;
-    float:right;
-    padding: 8px 6px 0px 6px;
+    display: inline-block;
+    margin-left: 6px;
     min-width: 43px;
 }
 
@@ -1547,7 +1592,7 @@ ul#searchTags {
 
 ul.tags,
 ul.tags.marked-tags,
-ul#related-tags {
+ul.js-related-tags {
     list-style: none;
     margin: 0;
     padding: 0 0 0 1px;
@@ -1586,32 +1631,40 @@ ul#ab-user-tags li {
     margin-left: 5px;
 }
 
-ul#related-tags li {
+ul.js-related-tags li {
     margin: 0 5px 8px 0;
     float: left;
     clear: left;
 }
 
-/* .tag-left and .tag-right are for the sliding doors decoration of tags */
-
-.tag-left {
-    cursor: pointer;
+.js-tag {
     display: block;
-    float: left;
     height: 17px;
     margin: 0 5px 0 0;
     padding: 0;
-    .box-shadow(0px,0px,5px,#d3d6d7);
+    .js-delete-icon {
+        .box-shadow(0px,0px,5px,#d3d6d7);
+        border-top: none;
+        .rounded-corners-right(4px);
+    }
+    .tag-number {
+        float: none;
+    }
 }
 
-.tag-right {
+.js-tag-extra-content {
+    padding-left: 4px;
+    vertical-align: text-top;
+}
+
+.js-tag-name {
+    cursor: pointer;
     background: #f3f6f6;
     border:#fff 1px solid ;
     border-top:#fff 2px solid;
     outline:#cfdbdb 1px solid !important;
-   /* .box-shadow(0px,1px,0px,#88a8a8);*/
-    display: block;
-    float: left;
+    .box-shadow(0px,0px,5px,#d3d6d7);
+    display: inline-block;
     height: 17px;
     line-height: 17px;
     font-weight: normal;
@@ -1624,14 +1677,13 @@ ul#related-tags li {
     font-family:@body-font;
     color:#717179;
 }
-.deletable-tag {
+.js-deletable-tag {
     margin-right: 3px;
     white-space: nowrap;
-    .rounded-corners-right(4px);
 }
 
-.tags a.tag-right,
-.tags span.tag-right {
+.tags a.js-tag-name,
+.tags span.js-tag-name {
     color: #585858;
     text-decoration: none;
 
@@ -1714,12 +1766,10 @@ ul#related-tags li {
     margin-right: 5px;
 }
 
-.delete-icon {
-    margin-top:-1px;
-    float: left;
+.js-delete-icon {
     height: 21px;
     width:18px;
-    display: block;
+    display: inline-block;
     line-height:20px;
     text-align:center;
     background: #bbcdcd;
@@ -1731,7 +1781,7 @@ ul#related-tags li {
     .text-shadow(0px,1px,0px,#7ea0a0)
 
 }
-.delete-icon:hover {
+.js-delete-icon:hover {
     background: #b32f2f;
 }
 
@@ -1848,7 +1898,7 @@ ul#related-tags li {
 
     label[for="editor"],
     label[for="id_title"],
-    span.form-error {
+    .form-error {
         font-size: 16px;
         font-style: italic;
     }
@@ -1999,19 +2049,31 @@ ul#related-tags li {
     }
 }
 
-.wmd-container {
+.wmd-container,
+.js-simple-editor {
     textarea {
         border: none;
     }
 }
-.users-page .wmd-container {
-    width: auto;
+.users-page {
+    .wmd-container,
+    .js-simple-editor {
+        height: 120px;
+        padding: 0;
+        width: auto;
+        textarea {
+            box-sizing: border-box;
+            height: 90px;
+            width: 100%;
+        }
+    }
 }
 .ask-page,
 .question-page,
 .edit-question-page,
 .edit-answer-page {
-    .wmd-container {
+    .wmd-container,
+    .js-simple-editor {
         box-sizing: border-box;
         -moz-box-sizing: border-box;
         -webkit-box-sizing: border-box;
@@ -2020,9 +2082,12 @@ ul#related-tags li {
         width: 723px;
         width: 100%;
     }
-    .post-comments .wmd-container {
-        margin-bottom: 8px;
-        margin-left: -2px;
+    .post-comments {
+        .wmd-container,
+        .js-simple-editor {
+            margin-bottom: 8px;
+            margin-left: -2px;
+        }
     }
     #editor {
         -webkit-box-sizing: border-box;
@@ -2040,7 +2105,8 @@ ul#related-tags li {
 }
 
 .edit-answer-page {
-    .wmd-container {
+    .wmd-container,
+    .js-simple-editor {
         margin-top: 13px;
     }
 }
@@ -2196,6 +2262,15 @@ ul#related-tags li {
 }
 
 /* ----- Question template ----- */
+
+.moderated-item {
+    background: #ccc;
+    .rounded-corners(4px);
+    padding: 3px;
+    .fa {
+        color: brown;
+    }
+}
 
 .answer, .question {
     .moderated {
@@ -2587,15 +2662,15 @@ ul#related-tags li {
             padding: 5px 19px 2px 6px;
             width: 100%;
         }
-        .wmd-container textarea {
-            border: none;
-            box-shadow: inset 0 0 3px 1px #aaa;
-            -moz-box-shadow: inset 0 0 3px 1px #aaa;
-            -webkit-box-shadow: inset 0 0 3px 1px #aaa
-        }
-        .transient-comment {
-            margin-bottom: 3px; /* match paragraph style */
-        }
+        .wmd-container,
+        .js-simple-editor {
+            textarea {
+                border: none;
+                box-shadow: inset 0 0 3px 1px #aaa;
+                -moz-box-shadow: inset 0 0 3px 1px #aaa;
+                -webkit-box-shadow: inset 0 0 3px 1px #aaa
+            }
+        } 
         input {
             margin-left: 10px;
             margin-top: 1px;
@@ -2661,13 +2736,13 @@ ul#related-tags li {
         a.author:hover {
             text-decoration: underline;
         }
-        span.delete-icon{
+        span.js-delete-icon{
             background:url(../images/close-small.png) no-repeat;
             border:0;
             width:14px;
             height:14px;
         }
-        span.delete-icon:hover{
+        span.js-delete-icon:hover{
             border:#BC564B 2px solid;
             .rounded-corners(10px);
             margin: -3px 0px 0px -2px;
@@ -2700,6 +2775,9 @@ ul#related-tags li {
 
         .comment-controls {
             padding-left: 3px;
+            .js-avatar-box {
+                margin-right: 4px;
+            }
         }
 
         .edit {
@@ -2742,9 +2820,9 @@ ul#related-tags li {
 
         .upvote {
             margin: 0px;
-            padding-right: 17px;
+            padding-right: 11px;
             padding-top: 2px;
-            text-align: right;
+            text-align: left;
             height: 20px;
             font-size: 13px;
             font-weight: bold;
@@ -2804,10 +2882,9 @@ ul#related-tags li {
     }
 
     .tabBar-answer {
-        margin-bottom:15px;
-        padding-left:7px;
-        width:723px;
-        margin-top:10px;
+        padding-left: 7px;
+        width: 723px;
+        margin-top: 10px;
     }
 
     .accepted-answer {
@@ -3192,7 +3269,7 @@ ul#related-tags li {
 }*/
 
 .users-page #group-openness-selector {
-    width: 200px;
+    width: 100%;
 }
 
 .user {
@@ -3378,38 +3455,14 @@ a:hover.medal {
     p{font-size:13px;}
 }
 
-.follow-toggle {
-    height: auto;
-}
-
-.follow-toggle,.submit {
+.submit {
     font-weight:bold;
     line-height:26px;
     margin-top:-2px;
 }
 
-.follow-toggle:hover, .submit:hover {
+.submit:hover {
     text-decoration:none !important;
-}
-
-.follow-toggle .follow{
-    font-color: #000;
-    font-style:normal;
-}
-
-.follow-toggle .unfollow div.unfollow-red{
-    display:none;
-}
-
-.follow-toggle .unfollow:hover div.unfollow-red{
-    display:inline;
-    color:#fff;
-    font-weight:bold;
-    color:#A05736;
-}
-
-.follow-toggle .unfollow:hover div.unfollow-green{
-    display:none;
 }
 
 .count {
@@ -3693,13 +3746,27 @@ span.text-counter {
     margin-right: 20px;
 }
 
-span.form-error {
+.form-error {
     color: #990000;
     font-weight: normal;
+    vertical-align: bottom;
+}
+label + .form-error {
+    padding-left: 8px;
+}
+
+.checkbox .errorlist {
+    margin-bottom: -5px;
 }
 
 ul.errorlist {
     margin-bottom: 0;
+    list-style: none;
+    font-size: 10px;
+    color: darkred;
+    li {
+        line-height: 16px;
+    }
 }
 
 p.form-item {
@@ -4194,7 +4261,7 @@ ul.post-retag {
     margin-bottom: 0;
 }
 
-#related-tags {
+.js-related-tags {
     padding-left: 3px;
 }
 
@@ -4316,7 +4383,7 @@ p.signup_p {
     width: 166px;
     overflow: hidden;
 
-    .avatar-box {
+    .js-avatar-box {
         float: left;
         margin: 0px 6px 0 2px;
     }
@@ -4358,7 +4425,7 @@ a.edit {
     ul {
         margin-bottom: 0px;
     }
-    .delete-icon {
+    .js-delete-icon {
         background: url(../images/close-small.png) no-repeat;
         border: none;
         display: inline-block;
@@ -4366,7 +4433,7 @@ a.edit {
         margin-top: 4px;
         width: 14px;
     }
-    .delete-icon:hover {
+    .js-delete-icon:hover {
         background: url(../images/close-small-hover.png) no-repeat;
     }
 }
@@ -4396,10 +4463,6 @@ a.primary-group-name {
     .group-logo {
         float: left;
         margin: 0 5px 3px 0;
-    }
-    .follow-toggle.group-join-btn {
-        margin: 4px auto 10px auto;
-        display: block;
     }
     .controls {
         margin: 0 0 10px 0;
@@ -4739,6 +4802,7 @@ td.setting-input {
         width: 50%;
     }
     textarea {
+        padding: 3px 2px;
         width: 100%;
         -webkit-box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.075);
         -moz-box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.075);
@@ -4830,7 +4894,7 @@ td.setting-input {
             margin-right: 2px;
         }
     }
-    .tag-right {
+    .js-tag-name {
         height: 20px;
     }
 }

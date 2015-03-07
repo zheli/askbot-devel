@@ -19,78 +19,22 @@ from django.http import HttpResponse
 from django.http import HttpResponseNotAllowed
 from django.http import HttpResponseForbidden
 from django.utils import simplejson
-from group_messaging.models import Message
-from group_messaging.models import MessageMemo
-from group_messaging.models import SenderList
-from group_messaging.models import LastVisitTime
-from group_messaging.models import get_personal_group_by_user_id
-from group_messaging.models import get_personal_groups_for_users
-
-class InboxView(object):
-    """custom class-based view
-    to be used for pjax use and for generation
-    of content in the traditional way, where
-    the only the :method:`get_context` would be used.
-    """
-    template_name = None #used only for the "GET" method
-    http_method_names = ('GET', 'POST')
-
-    def render_to_response(self, context, template_name=None):
-        """like a django's shortcut, except will use
-        template_name from self, if `template_name` is not given.
-        Also, response is packaged as json with an html fragment
-        for the pjax consumption
-        """
-        if template_name is None:
-            template_name = self.template_name
-        template = get_template(template_name)
-        html = template.render(Context(context))
-        json = simplejson.dumps({'html': html, 'success': True})
-        return HttpResponse(json, content_type='application/json')
-            
-
-    def get(self, request, *args, **kwargs):
-        """view function for the "GET" method"""
-        context = self.get_context(request, *args, **kwargs)
-        return self.render_to_response(context)
-
-    def post(self, request, *args, **kwargs):
-        """view function for the "POST" method"""
-        pass
-
-    def dispatch(self, request, *args, **kwargs):
-        """checks that the current request method is allowed
-        and calls the corresponding view function"""
-        if request.method not in self.http_method_names:
-            return HttpResponseNotAllowed()
-        view_func = getattr(self, request.method.lower())
-        return view_func(request, *args, **kwargs)
-
-    def get_context(self, request, *args, **kwargs):
-        """Returns the context dictionary for the "get"
-        method only"""
-        return {}
-
-    def as_view(self):
-        """returns the view function - for the urls.py"""
-        def view_function(request, *args, **kwargs):
-            """the actual view function"""
-            if request.user.is_authenticated() and request.is_ajax():
-                view_method = getattr(self, request.method.lower())
-                return view_method(request, *args, **kwargs)
-            else:
-                return HttpResponseForbidden()
-
-        return view_function
+from askbot.utils.views import PjaxView
+from .models import Message
+from .models import MessageMemo
+from .models import SenderList
+from .models import LastVisitTime
+from .models import get_personal_group_by_user_id
+from .models import get_personal_groups_for_users
 
 
-class NewThread(InboxView):
+class NewThread(PjaxView):
     """view for creation of new thread"""
     http_method_list = ('POST',)
 
     def post(self, request):
         """creates a new thread on behalf of the user
-        response is blank, because on the client side we just 
+        response is blank, because on the client side we just
         need to go back to the thread listing view whose
         content should be cached in the client'
         """
@@ -124,7 +68,7 @@ class NewThread(InboxView):
         return HttpResponse(simplejson.dumps(result), content_type='application/json')
 
 
-class PostReply(InboxView):
+class PostReply(PjaxView):
     """view to create a new response"""
     http_method_list = ('POST',)
 
@@ -148,28 +92,35 @@ class PostReply(InboxView):
         )
 
 
-class ThreadsList(InboxView):
-    """shows list of threads for a given user"""  
+class ThreadsList(PjaxView):
+    """shows list of threads for a given user"""
     template_name = 'group_messaging/threads_list.html'
     http_method_list = ('GET',)
 
-    def get_context(self, request):
+    def get_context(self, request, *args):
         """returns thread list data"""
+
+        if len(args):
+            user = args[0]
+        else:
+            user = request.user
+
         #get threads and the last visit time
         sender_id = IntegerField().clean(request.REQUEST.get('sender_id', '-1'))
+
         if sender_id == -2:
             threads = Message.objects.get_threads(
-                                            recipient=request.user,
+                                            recipient=user,
                                             deleted=True
                                         )
         elif sender_id == -1:
-            threads = Message.objects.get_threads(recipient=request.user)
-        elif sender_id == request.user.id:
-            threads = Message.objects.get_sent_threads(sender=request.user)
+            threads = Message.objects.get_threads(recipient=user)
+        elif sender_id == user.id:
+            threads = Message.objects.get_sent_threads(sender=user)
         else:
             sender = User.objects.get(id=sender_id)
             threads = Message.objects.get_threads(
-                                            recipient=request.user,
+                                            recipient=user,
                                             sender=sender
                                         )
 
@@ -184,8 +135,8 @@ class ThreadsList(InboxView):
             thread_data['status'] = 'new'
             #determine the senders info
             senders_names = thread.senders_info.split(',')
-            if request.user.username in senders_names:
-                senders_names.remove(request.user.username)
+            if user.username in senders_names:
+                senders_names.remove(user.username)
             thread_data['senders_info'] = ', '.join(senders_names)
             thread_data['thread'] = thread
             threads_data[thread.id] = thread_data
@@ -202,7 +153,7 @@ class ThreadsList(InboxView):
             threads_data[thread_id]['responses_count'] = responses_count
 
         last_visit_times = LastVisitTime.objects.filter(
-                                            user=request.user,
+                                            user=user,
                                             message__in=threads
                                         )
         for last_visit in last_visit_times:
@@ -255,7 +206,7 @@ class DeleteOrRestoreThread(ThreadsList):
         return self.render_to_response(Context(context))
 
 
-class SendersList(InboxView):
+class SendersList(PjaxView):
     """shows list of senders for a user"""
     template_name = 'group_messaging/senders_list.html'
     http_method_names = ('GET',)
@@ -267,7 +218,7 @@ class SendersList(InboxView):
         return {'senders': senders, 'request_user_id': request.user.id}
 
 
-class ThreadDetails(InboxView):
+class ThreadDetails(PjaxView):
     """shows entire thread in the unfolded form"""
     template_name = 'group_messaging/thread_details.html'
     http_method_names = ('GET',)
@@ -281,7 +232,13 @@ class ThreadDetails(InboxView):
                                                             message=root,
                                                             user=request.user
                                                         )
+        root.mark_as_seen(request.user)
         if created is False:
             last_visit.at = datetime.datetime.now()
             last_visit.save()
-        return {'root_message': root, 'responses': responses, 'request': request}
+
+        return {
+            'root_message': root, 
+            'responses': responses, 
+            'request': request
+        }

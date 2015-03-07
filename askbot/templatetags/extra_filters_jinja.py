@@ -75,7 +75,7 @@ def to_int(value):
     return int(value)
 
 @register.filter
-def safe_urlquote(text, quote_plus = False):
+def safe_urlquote(text, quote_plus=False):
     if quote_plus:
         return urllib.quote_plus(text.encode('utf8'))
     else:
@@ -168,6 +168,14 @@ def get_age(birthday):
     day = birthday.day
     diff = current_time - datetime.datetime(year,month,day,0,0,0)
     return diff.days / 365
+
+@register.filter
+def equal(one, other):
+    return one == other
+
+@register.filter
+def not_equal(one, other):
+    return one != other
 
 @register.filter
 def media(url):
@@ -334,7 +342,7 @@ def can_see_offensive_flags(user, post):
     suspended or blocked users cannot see flags
     """
     if user.is_authenticated():
-        if user == post.get_owner():
+        if user.pk == post.author_id:
             return True
         if user.reputation >= askbot_settings.MIN_REP_TO_VIEW_OFFENSIVE_FLAGS:
             return True

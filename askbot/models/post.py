@@ -23,6 +23,8 @@ from django.contrib.contenttypes.models import ContentType
 
 import askbot
 
+from askbot import signals
+from askbot.utils.loading import load_module, load_plugin
 from askbot.utils.slug import slugify
 from askbot import const
 from askbot.models.tag import Tag, MarkedTag
@@ -30,15 +32,50 @@ from askbot.models.tag import tags_match_some_wildcard
 from askbot.conf import settings as askbot_settings
 from askbot import exceptions
 from askbot.utils import markup
-from askbot.utils.html import get_word_count
-from askbot.utils.html import sanitize_html
-from askbot.utils.html import strip_tags
-from askbot.utils.html import site_url
+from askbot.utils.html import (get_word_count, has_moderated_tags,
+                moderate_tags, sanitize_html, strip_tags, site_url)
 from askbot.models.base import BaseQuerySetManager, DraftContent
 
 #todo: maybe merge askbot.utils.markup and forum.utils.html
 from askbot.utils.diff import textDiff as htmldiff
 from askbot.search import mysql
+
+
+def default_html_moderator(post):
+    """Moderates inline HTML items: images and/or links
+    depending on what items are moderated per settings.
+    
+    Returns sanitized html with suspicious
+    content edited out and replaced with warning signs.
+    Moderators content is not sanitized.
+
+    Latest revision is placed on the moderation queue.
+
+    TODO: Make moderation work per-item: e.g. per link
+    or per image.
+
+    This function can be overridden by setting python path
+    to the alternative function as a value of `ASKBOT_HTML_MODERATOR`
+    in the settings.py, e.g:
+
+    ASKBOT_HTML_MODERATOR = 'my_extension.html_moderator'
+    """
+    if not (askbot_settings.MODERATE_LINKS or askbot_settings.MODERATE_IMAGES):
+        return post.html
+
+    rev = post.current_revision
+
+    author = rev.author
+    not_admin = not author.is_administrator_or_moderator()
+    if not_admin and has_moderated_tags(post.html):
+        before = post.html 
+        after = moderate_tags(before)
+        if after != before:
+            rev.place_on_moderation_queue()
+            return after
+
+    return post.html
+
 
 class PostToGroup(models.Model):
     post = models.ForeignKey('Post')
@@ -200,7 +237,7 @@ class PostManager(BaseQuerySetManager):
                 email_notify=False,
                 post_type=None,
                 by_email=False,
-                ip_addr=None,
+                ip_addr=None
             ):
         # TODO: Some of this code will go to Post.objects.create_new
 
@@ -233,7 +270,7 @@ class PostManager(BaseQuerySetManager):
         is_private = is_private or \
             (thread and thread.requires_response_moderation(author))
 
-        parse_results = post.parse_and_save(author=author, is_private=is_private)
+        post.save() #saved so that revision can have post_id
 
         revision = post.add_revision(
             author=author,
@@ -244,8 +281,13 @@ class PostManager(BaseQuerySetManager):
             ip_addr=ip_addr
         )
 
+        #now we parse html
+        parse_results = post.parse_and_save(author=author, is_private=is_private)
+
+        #moderate inline content
+        post.moderate_html()
+
         if revision.revision > 0:
-            from askbot.models import signals
             signals.post_updated.send(
                 post=post,
                 updated_by=author,
@@ -352,15 +394,35 @@ class MockPost(object):
     out the js templates for the posts made via ajax
     """
     def __init__(self, post_type=None, author=None):
+        from askbot.models.user import MockUser
         self.post_type = post_type
         self.score = 0
         self.id = 0
-        self.author = author
+        self.author = MockUser()
         self.summary = ''
         self.added_at = datetime.datetime.now()
 
     def needs_moderation(self):
         return False
+
+
+POST_RENDERERS_MAP = getattr(django_settings, 'ASKBOT_POST_RENDERERS', {
+    'plain-text': 'askbot.utils.markup.plain_text_input_converter',
+    'markdown': 'askbot.utils.markup.markdown_input_converter',
+    'tinymce': 'askbot.utils.markup.tinymce_input_converter',
+})
+
+
+def get_post_renderer_type(post_type):
+    have_simple_comment = (
+        post_type == 'comment' and
+        askbot_settings.COMMENTS_EDITOR_TYPE == 'plain-text'
+    )
+    if have_simple_comment:
+        return 'plain-text'
+    else:
+        return askbot_settings.EDITOR_TYPE
+
 
 class Post(models.Model):
     post_type = models.CharField(max_length=255, db_index=True)
@@ -371,11 +433,27 @@ class Post(models.Model):
     old_comment_id = models.PositiveIntegerField(null=True, blank=True, default=None, unique=True)
 
     parent = models.ForeignKey('Post', blank=True, null=True, related_name='comments') # Answer or Question for Comment
-    thread = models.ForeignKey('Thread', blank=True, null=True, default = None, related_name='posts')
+    thread = models.ForeignKey('Thread', blank=True, null=True, default=None, related_name='posts')
+    current_revision = models.ForeignKey(
+                                'PostRevision', 
+                                blank=True, 
+                                null=True, #nullable b/c we have to first save post
+                                           #and then add link to current revision
+                                           #(which has a non-nullable fk to post)
+                                related_name='rendered_posts'
+                            )# "rendered" revision
     groups = models.ManyToManyField('Group', through='PostToGroup', related_name = 'group_posts')#used for group-private posts
 
     author = models.ForeignKey(User, related_name='posts')
     added_at = models.DateTimeField(default=datetime.datetime.now)
+
+    #endorsed == accepted as best in the case of answer
+    #use word 'endorsed' to differentiate from 'approved', which
+    #is used for the moderation
+    #note: accepted answer is also denormalized on the Thread model
+    endorsed = models.BooleanField(default=False, db_index=True)
+    endorsed_by = models.ForeignKey(User, null=True, blank=True, related_name='endorsed_posts')
+    endorsed_at = models.DateTimeField(null=True, blank=True)
 
     #denormalized data: the core approval of the posts is made
     #in the revisions. In the revisions there is more data about
@@ -504,6 +582,7 @@ class Post(models.Model):
                 anticipated_authors
             )
 
+            #todo: stuff below possibly does not belong here
             #find mentions that were removed and identify any previously
             #entered mentions so that we can send alerts on only new ones
             from askbot.models.user import Activity
@@ -534,21 +613,25 @@ class Post(models.Model):
 
     #todo: when models are merged, it would be great to remove author parameter
     def parse_and_save(self, author=None, **kwargs):
-        """generic method to use with posts to be used prior to saving
-        post edit or addition
+        """converts .text version of post to .html
+        using appropriate converter.
+        @mentions are rendered as well as internal links.
         """
         assert(author is not None)
 
         last_revision = self.html
         data = self.parse_post_text()
-        self.html = author.fix_html_links(data['html'])
 
-        newly_mentioned_users = set(data['newly_mentioned_users']) - set([author])
-        removed_mentions = data['removed_mentions']
+        #todo: possibly remove feature of posting links 
+        #depending on user's reputation
+        self.html = author.fix_html_links(data['html'])
 
         #a hack allowing to save denormalized .summary field for questions
         if hasattr(self, 'summary'):
             self.summary = self.get_snippet()
+
+        newly_mentioned_users = set(data['newly_mentioned_users']) - set([author])
+        removed_mentions = data['removed_mentions']
 
         #delete removed mentions
         for rm in removed_mentions:
@@ -564,6 +647,7 @@ class Post(models.Model):
         #because generic relation needs primary key of the related object
         super(self.__class__, self).save(**kwargs)
 
+        #todo: move this group stuff out of this function
         if self.is_comment():
             #copy groups from the parent post into the comment
             groups = self.parent.groups.all()
@@ -604,6 +688,9 @@ class Post(models.Model):
 
     def is_comment(self):
         return self.post_type == 'comment'
+
+    def is_qa_content(self):
+        return self.post_type in ('question', 'answer', 'comment')
 
     def is_tag_wiki(self):
         return self.post_type == 'tag_wiki'
@@ -647,23 +734,17 @@ class Post(models.Model):
         return answer
 
     def get_text_converter(self):
-        have_simple_comment = (
-            self.is_comment() and 
-            askbot_settings.COMMENTS_EDITOR_TYPE == 'plain-text'
-        )
-        if have_simple_comment:
-            parser_type = 'plain-text'
-        else:
-            parser_type = askbot_settings.EDITOR_TYPE
-
-        if parser_type == 'plain-text':
-            return markup.plain_text_input_converter
-        elif parser_type == 'markdown':
-            return markup.markdown_input_converter
-        elif parser_type == 'tinymce':
-            return markup.tinymce_input_converter
-        else:
+        """returns text converter, which may
+        be overridden by setting
+        ASKBOT_POST_RENDERERS (look for format in the source code)
+        """
+        renderer_type = get_post_renderer_type(self.post_type)
+        try:
+            renderer_path = POST_RENDERERS_MAP[renderer_type]
+        except KeyError:
             raise NotImplementedError
+
+        return load_module(renderer_path)
 
     def has_group(self, group):
         """true if post belongs to the group"""
@@ -765,8 +846,8 @@ class Post(models.Model):
 
         from askbot.tasks import send_instant_notifications_about_activity_in_post
         send_instant_notifications_about_activity_in_post.apply_async((
-                                update_activity,
-                                self,
+                                update_activity.pk,
+                                self.id,
                                 notify_sets['for_email']),
                                 countdown = django_settings.NOTIFICATION_DELAY_TIME
                             )
@@ -841,6 +922,20 @@ class Post(models.Model):
         self.save()
         post.delete()
 
+    def moderate_html(self):
+        """moderate inline content, such
+        as links and images"""
+        moderate = load_plugin(
+                            'ASKBOT_HTML_MODERATOR',
+                            'askbot.models.post.default_html_moderator'
+                        )
+
+        before = self.html
+        after = moderate(self)
+        if after != before:
+            self.html = after
+            self.summary = self.get_snippet()
+            self.save()
 
     def is_private(self):
         """true, if post belongs to the global group"""
@@ -854,6 +949,15 @@ class Post(models.Model):
         """Used at runtime only, the value is not
         stored in the database"""
         self._is_approved = False
+
+    def set_is_approved(self, is_approved):
+        """sets denormalized value of whether post/thread is 
+        approved"""
+        self.approved = is_approved 
+        self.save()
+        if self.is_question():
+            self.thread.approved = is_approved
+            self.thread.save()
 
     def is_approved(self):
         """``False`` only when moderation is ``True`` and post
@@ -873,7 +977,12 @@ class Post(models.Model):
         #todo: do we need this, can't we just use is_approved()?
         return self.is_approved() is False
 
-    def get_absolute_url(self, no_slug = False, question_post=None, thread=None):
+    def get_absolute_url(self, 
+                    no_slug=False,
+                    question_post=None,
+                    language=None,
+                    thread=None
+                ):
         from askbot.utils.slug import slugify
         #todo: the url generation function is pretty bad -
         #the trailing slash is entered in three places here + in urls.py
@@ -883,7 +992,7 @@ class Post(models.Model):
         is_multilingual = getattr(django_settings, 'ASKBOT_MULTILINGUAL', False)
         if is_multilingual:
             request_language = get_language()
-            activate_language(self.language_code)
+            activate_language(language or self.language_code)
 
         if self.is_answer():
             if not question_post:
@@ -1477,7 +1586,7 @@ class Post(models.Model):
             language = self.thread.language_code
             filtered_subscribers = list()
             for subscriber in subscribers:
-                subscriber_languages = subscriber.languages.split()
+                subscriber_languages = subscriber.get_languages()
                 if language in subscriber_languages:
                     filtered_subscribers.append(subscriber)
             return filtered_subscribers
@@ -1520,6 +1629,8 @@ class Post(models.Model):
         rev = self.revisions.order_by('-revision')[0]
         self.cache_latest_revision(rev)
         return rev
+#        #todo: remove this method
+#        return self.current_revision
 
     def get_earliest_revision(self):
         if hasattr(self, '_first_rev_cache'):
@@ -1542,9 +1653,6 @@ class Post(models.Model):
             return self.last_edited_at
         else:
             return self.added_at
-
-    def get_owner(self): # TODO: remove me
-        return self.author
 
     def get_author_list(
             self,
@@ -1601,7 +1709,7 @@ class Post(models.Model):
             for c in comments:
                 if c.added_at > when:
                     when = c.added_at
-                    who = c.user
+                    who = c.author
         return when, who
 
     def tagname_meta_generator(self):
@@ -1884,11 +1992,12 @@ class Post(models.Model):
                 ip_addr=ip_addr,
                 is_anonymous=edit_anonymously
             )
-
+        
         if latest_rev.revision > 0:
             parse_results = self.parse_and_save(author=edited_by, is_private=is_private)
 
-            from askbot.models import signals
+            self.moderate_html()
+
             signals.post_updated.send(
                 post=self,
                 updated_by=edited_by,
@@ -2174,11 +2283,6 @@ class Post(models.Model):
                 return self.thread.title
         raise NotImplementedError
 
-    def accepted(self):
-        if self.is_answer():
-            return self.thread.accepted_answer_id == self.id
-        raise NotImplementedError
-
     def get_page_number(self, answer_posts):
         """When question has many answers, answers are
         paginated. This function returns number of the page
@@ -2241,8 +2345,11 @@ class PostRevisionManager(models.Manager):
         is_content = post.is_question() or post.is_answer() or post.is_comment()
         needs_moderation = is_content and (author.needs_moderation() or moderate_email)
 
+        needs_premoderation = askbot_settings.CONTENT_MODERATION_MODE == 'premoderation' \
+                                and needs_moderation 
+
         #0 revision is not shown to the users
-        if askbot_settings.CONTENT_MODERATION_MODE == 'premoderation' and needs_moderation:
+        if needs_premoderation:
             kwargs.update({
                 'approved': False,
                 'approved_by': None,
@@ -2271,12 +2378,24 @@ class PostRevisionManager(models.Manager):
                     revision.summary = 'No.%s Revision' % revision.revision
             revision.save()
 
-            from askbot.models import signals
             signals.post_revision_published.send(None, revision=revision)
 
         #audit or pre-moderation modes require placement of the post on the moderation queue
         if needs_moderation:
             revision.place_on_moderation_queue()
+
+        #set current "rendered" revision for soft moderation,
+        #for autoapproved revision and premoderated revision
+        #of new post
+        if not needs_premoderation:
+            post.current_revision = revision
+            post.save()
+        elif post.revisions.count() == 1:
+            post.current_revision = revision
+            post.save()
+        #don't advance current revision if we
+        #have premoderated revision and have previously 
+        #approved revisions
 
         revision.post.cache_latest_revision(revision)
 
@@ -2320,62 +2439,16 @@ class PostRevision(models.Model):
 
 
     def place_on_moderation_queue(self):
-        """Revision has number 0, which is 
-        reserved for the moderated revisions.
-
-        Flag Post.is_approved = False is used only
-        for posts that have only one revision - the 
-        moderated one - i.e. for the new posts
-
-        The same applies to the brand new Threads
-        Thread.is_approved = False is set to brand new
-        threads, whose first revision is moderated
-
-        If post has > 1 revision and one on moderation
-        the Post(and Thread).is_approved will be True,
-        but the latest displayed revision will be
-        the one with != 0 revision number.
-
-        This allows us to moderate every revision
+        """Creates moderation queue
+        Activity items with recipients
         """
-        #this is run on "post-save" so for a new post
-        #we'll have just one revision
         if self.post.revisions.count() == 1:
-            self.post.approved = False
-            self.post.save()
-
-            if self.post.is_question():
-                self.post.thread.approved = False
-                self.post.thread.save()
-
-            #give message to the poster
-            if askbot_settings.CONTENT_MODERATION_MODE == 'premoderation':
-                if self.by_email:
-                    #todo: move this to the askbot.mail module
-                    from askbot.mail import send_mail
-                    email_context = {
-                        'site': askbot_settings.APP_SHORT_NAME
-                    }
-                    body_text = _(
-                        'Thank you for your post to %(site)s. '
-                        'It will be published after the moderators review.'
-                    ) % email_context
-                    send_mail(
-                        subject_line = _('your post to %(site)s') % email_context,
-                        body_text = body_text,
-                        recipient_list = [self.author.email,],
-                    )
-
-                else:
-                    message = _(
-                        'Your post was placed on the moderation queue '
-                        'and will be published after the moderator approval.'
-                    )
-                    self.author.message_set.create(message = message)
-
+            if self.revision == 0:
+                #call below hides post from the display to the
+                #general public
+                self.post.set_is_approved(False)
             activity_type = const.TYPE_ACTIVITY_MODERATED_NEW_POST
         else:
-            #In this case, use different activity type, but perhaps there is no real need
             activity_type = const.TYPE_ACTIVITY_MODERATED_POST_EDIT
 
         #Activity instance is the actual queue item
@@ -2390,13 +2463,40 @@ class PostRevision(models.Model):
                                     )
         except Activity.DoesNotExist:
             activity = Activity(
-                            user = self.author,
-                            content_object = self,
-                            activity_type = activity_type,
-                            question = self.get_origin_post()
+                            user=self.author,
+                            content_object=self,
+                            activity_type=activity_type,
+                            question=self.get_origin_post()
                         )
             activity.save()
-            activity.add_recipients(self.post.get_moderators())
+
+        activity.add_recipients(self.post.get_moderators())
+
+        #give message to the poster
+        #TODO: move this out as signal handler
+        if askbot_settings.CONTENT_MODERATION_MODE == 'premoderation':
+            if self.by_email:
+                #todo: move this to the askbot.mail module
+                from askbot.mail import send_mail
+                email_context = {
+                    'site': askbot_settings.APP_SHORT_NAME
+                }
+                body_text = _(
+                    'Thank you for your post to %(site)s. '
+                    'It will be published after the moderators review.'
+                ) % email_context
+                send_mail(
+                    subject_line = _('your post to %(site)s') % email_context,
+                    body_text = body_text,
+                    recipient_list = [self.author.email,],
+                )
+
+            else:
+                message = _(
+                    'Your post was placed on the moderation queue '
+                    'and will be published after the moderator approval.'
+                )
+                self.author.message_set.create(message = message)
 
     def should_notify_author_about_publishing(self, was_approved=False):
         """True if author should get email about making own post"""
@@ -2504,13 +2604,34 @@ class AnonymousAnswer(DraftContent):
 
     def publish(self, user):
         added_at = datetime.datetime.now()
-        Post.objects.create_new_answer(
-            thread=self.question.thread,
-            author=user,
-            added_at=added_at,
-            wiki=self.wiki,
-            text=self.text,
-            ip_addr=self.ip_addr,
-        )
-        self.question.thread.invalidate_cached_data()
-        self.delete()
+        try:
+            user.assert_can_post_text(self.text)
+
+        except django_exceptions.PermissionDenied, e:
+            #delete previous draft questions (only one is allowed anyway)
+            thread = self.question.thread
+            prev_drafts = DraftAnswer.objects.filter(   
+                                                author=user,
+                                                thread=thread
+                                            )
+            prev_drafts.delete()
+            #convert this question to draft
+            DraftAnswer.objects.create(
+                            thread=thread,
+                            author=user,
+                            text=self.text
+                        )
+
+        else:
+            Post.objects.create_new_answer(
+                thread=self.question.thread,
+                author=user,
+                added_at=added_at,
+                wiki=self.wiki,
+                text=self.text,
+                ip_addr=self.ip_addr,
+            )
+            self.question.thread.invalidate_cached_data()
+
+        finally:
+            self.delete()

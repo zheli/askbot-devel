@@ -5,6 +5,7 @@ This module contains most (but not all) processors for Ajax requests.
 Not so clear if this subdivision was necessary as separation of Ajax and non-ajax views
 is not always very clean.
 """
+import askbot
 import datetime
 import logging
 from bs4 import BeautifulSoup
@@ -41,6 +42,7 @@ from askbot.utils import category_tree
 from askbot.utils import decorators
 from askbot.utils import url_utils
 from askbot.utils.forms import get_db_object_or_404
+from askbot.utils.html import get_login_link
 from django.template import RequestContext
 from askbot.skins.loaders import render_into_skin_as_string
 from askbot.skins.loaders import render_text_into_skin
@@ -99,7 +101,7 @@ def process_vote(user=None, vote_direction=None, post=None):
     return response_data
 
 
-@csrf.csrf_exempt
+@csrf.csrf_protect
 def vote(request):
     """
     todo: this subroutine needs serious refactoring it's too long and is hard to understand
@@ -168,7 +170,7 @@ def vote(request):
                 answer_id = request.POST.get('postId')
                 answer = get_object_or_404(models.Post, post_type='answer', id = answer_id)
                 # make sure question author is current user
-                if answer.accepted():
+                if answer.endorsed:
                     request.user.unaccept_best_answer(answer)
                     response_data['status'] = 1 #cancelation
                 else:
@@ -274,14 +276,7 @@ def vote(request):
             question = get_object_or_404(models.Post, post_type='question', id=id)
             vote_type = request.POST.get('type')
 
-            if vote_type == '4':
-                #follow question
-                fave = request.user.toggle_favorite_question(question)
-                response_data['count'] = models.FavoriteQuestion.objects.filter(thread = question.thread).count()
-                if fave == False:
-                    response_data['status'] = 1
-
-            elif vote_type == '11':#subscribe q updates
+            if vote_type == '11':#subscribe q updates
                 #todo: this branch is not used anymore
                 #now we just follow question, we don't have the
                 #separate "subscribe" function
@@ -334,10 +329,16 @@ def vote(request):
     return HttpResponse(data, content_type="application/json")
 
 #internally grouped views - used by the tagging system
-@csrf.csrf_exempt
+@csrf.csrf_protect
+@decorators.ajax_only
 @decorators.post_only
-@decorators.ajax_login_required
 def mark_tag(request, **kwargs):#tagging system
+
+    if request.user.is_anonymous():
+        msg = _('anonymous users cannot %(perform_action)s') % \
+            {'perform_action': _('mark or unmark tags')}
+        raise exceptions.PermissionDenied(msg + ' ' + get_login_link())
+
     action = kwargs['action']
     post_data = simplejson.loads(request.raw_post_data)
     raw_tagnames = post_data['tagnames']
@@ -352,11 +353,11 @@ def mark_tag(request, **kwargs):#tagging system
         user = request.user
 
     cleaned_tagnames, cleaned_wildcards = user.mark_tags(
-                                                         tagnames,
-                                                         wildcards,
-                                                         reason = reason,
-                                                         action = action
-                                                        )
+                                                     tagnames,
+                                                     wildcards,
+                                                     reason=reason,
+                                                     action=action
+                                                )
 
     #lastly - calculate tag usage counts
     tag_usage_counts = dict()
@@ -375,7 +376,7 @@ def mark_tag(request, **kwargs):#tagging system
         else:
             tag_usage_counts[name] = 0
 
-    return HttpResponse(simplejson.dumps(tag_usage_counts), content_type="application/json")
+    return tag_usage_counts
 
 #@decorators.ajax_only
 @decorators.get_only
@@ -466,7 +467,7 @@ def load_object_description(request):
     text = getattr(obj.description, 'text', '').strip()
     return HttpResponse(text, mimetype = 'text/plain')
 
-@csrf.csrf_exempt
+@csrf.csrf_protect
 @decorators.ajax_only
 @decorators.post_only
 @decorators.admins_only
@@ -482,7 +483,7 @@ def save_object_description(request):
         request.user.post_object_description(obj, body_text=text)
     return {'html': obj.description.html}
 
-@csrf.csrf_exempt
+@csrf.csrf_protect
 @decorators.ajax_only
 @decorators.post_only
 def rename_tag(request):
@@ -506,7 +507,7 @@ def rename_tag(request):
     )
     category_tree.save_data(tree)
 
-@csrf.csrf_exempt
+@csrf.csrf_protect
 @decorators.ajax_only
 @decorators.post_only
 def delete_tag(request):
@@ -531,7 +532,7 @@ def delete_tag(request):
         raise exceptions.PermissionDenied(_('Sorry, could not delete tag'))
     return {'tree_data': tree}
 
-@csrf.csrf_exempt
+@csrf.csrf_protect
 @decorators.ajax_only
 @decorators.post_only
 def add_tag_category(request):
@@ -713,6 +714,23 @@ def edit_bulk_tag_subscription(request, pk):
 
     return render(request, 'tags/form_bulk_tag_subscription.html', data)
 
+@csrf.csrf_protect
+@decorators.ajax_only
+@decorators.post_only
+def toggle_follow_question(request):
+    result = dict()
+
+    if request.user.is_anonymous():
+        msg = _('anonymous users cannot %(perform_action)s') % \
+            {'perform_action': askbot_settings.WORDS_FOLLOW_QUESTIONS}
+        raise exceptions.PermissionDenied(msg + ' ' + get_login_link())
+    else:
+        q_id = request.POST['question_id']
+        question = get_object_or_404(models.Post, id=q_id)
+        result['is_enabled'] = request.user.toggle_favorite_question(question)
+        result['num_followers'] = models.FavoriteQuestion.objects.filter(thread=question.thread).count()
+    return result
+
 @decorators.admins_only
 @decorators.post_only
 def delete_bulk_tag_subscription(request):
@@ -762,7 +780,7 @@ def api_get_questions(request):
     return HttpResponse(json_data, mimetype = "application/json")
 
 
-@csrf.csrf_exempt
+@csrf.csrf_protect
 @decorators.post_only
 @decorators.ajax_login_required
 def set_tag_filter_strategy(request):
@@ -845,7 +863,7 @@ def reopen(request, id):#re-open question
         return HttpResponseRedirect(question.get_absolute_url())
 
 
-@csrf.csrf_exempt
+@csrf.csrf_protect
 @decorators.ajax_only
 def swap_question_with_answer(request):
     """receives two json parameters - answer id
@@ -864,7 +882,7 @@ def swap_question_with_answer(request):
             return {'question_url': new_question.get_absolute_url() }
     raise Http404
 
-@csrf.csrf_exempt
+@csrf.csrf_protect
 @decorators.ajax_only
 @decorators.post_only
 def upvote_comment(request):
@@ -885,7 +903,7 @@ def upvote_comment(request):
     #FIXME: rename js
     return {'score': comment.points}
 
-@csrf.csrf_exempt
+@csrf.csrf_protect
 @decorators.ajax_only
 @decorators.post_only
 def delete_post(request):
@@ -908,7 +926,7 @@ def delete_post(request):
     return {'is_deleted': post.deleted}
 
 #askbot-user communication system
-@csrf.csrf_exempt
+@csrf.csrf_protect
 def read_message(request):#marks message a read
     if request.method == "POST":
         if request.POST.get('formdata') == 'required':
@@ -918,7 +936,7 @@ def read_message(request):#marks message a read
     return HttpResponse('')
 
 
-@csrf.csrf_exempt
+@csrf.csrf_protect
 @decorators.ajax_only
 @decorators.post_only
 @decorators.admins_only
@@ -967,6 +985,7 @@ def edit_group_membership(request):
         raise exceptions.PermissionDenied()
 
 
+#todo - enable csrf protection for this function
 @csrf.csrf_exempt
 @decorators.ajax_only
 @decorators.post_only
@@ -983,7 +1002,7 @@ def save_group_logo_url(request):
     else:
         raise ValueError('invalid data found when saving group logo')
 
-@csrf.csrf_exempt
+@csrf.csrf_protect
 @decorators.ajax_only
 @decorators.post_only
 @decorators.admins_only
@@ -1002,7 +1021,7 @@ def add_group(request):
                              url = url )
         return response_dict
 
-@csrf.csrf_exempt
+@csrf.csrf_protect
 @decorators.ajax_only
 @decorators.post_only
 @decorators.admins_only
@@ -1013,7 +1032,7 @@ def delete_group_logo(request):
     group.save()
 
 
-@csrf.csrf_exempt
+@csrf.csrf_protect
 @decorators.ajax_only
 @decorators.post_only
 @decorators.admins_only
@@ -1023,7 +1042,7 @@ def delete_post_reject_reason(request):
     reason.delete()
 
 
-@csrf.csrf_exempt
+@csrf.csrf_protect
 @decorators.ajax_only
 @decorators.post_only
 @decorators.admins_only
@@ -1044,7 +1063,7 @@ def toggle_group_profile_property(request):
     return {'is_enabled': new_value}
 
 
-@csrf.csrf_exempt
+@csrf.csrf_protect
 @decorators.ajax_only
 @decorators.post_only
 @decorators.admins_only
@@ -1056,7 +1075,7 @@ def set_group_openness(request):
     group.save()
 
 
-@csrf.csrf_exempt
+@csrf.csrf_protect
 @decorators.ajax_only
 @decorators.admins_only
 def edit_object_property_text(request):
@@ -1083,7 +1102,7 @@ def edit_object_property_text(request):
         raise exceptions.PermissionDenied()
 
 
-@csrf.csrf_exempt
+@csrf.csrf_protect
 @decorators.ajax_only
 @decorators.post_only
 def join_or_leave_group(request):
@@ -1107,13 +1126,13 @@ def join_or_leave_group(request):
         membership = request.user.join_group(group)
         new_level = membership.get_level_display()
     else:
-        membership.delete()
+        request.user.leave_group(group)
         new_level = Membership.get_level_value_display(Membership.NONE)
 
     return {'membership_level': new_level}
 
 
-@csrf.csrf_exempt
+@csrf.csrf_protect
 @decorators.ajax_only
 @decorators.post_only
 @decorators.admins_only
@@ -1144,7 +1163,7 @@ def save_post_reject_reason(request):
     else:
         raise Exception(forms.format_form_errors(form))
 
-@csrf.csrf_exempt
+@csrf.csrf_protect
 @decorators.ajax_only
 @decorators.post_only
 @decorators.admins_only
@@ -1202,13 +1221,18 @@ def moderate_suggested_tag(request):
         raise Exception(forms.format_form_errors(form))
 
 
-@csrf.csrf_exempt
+@csrf.csrf_protect
 @decorators.ajax_only
 @decorators.post_only
 def save_draft_question(request):
     """saves draft questions"""
-    #todo: allow drafts for anonymous users
-    if request.user.is_anonymous():
+    #todo: maybe allow drafts for anonymous users
+    if request.user.is_anonymous() \
+        or request.user.is_read_only() \
+        or askbot_settings.READ_ONLY_MODE_ENABLED \
+        or request.user.is_active == False \
+        or request.user.is_blocked() \
+        or request.user.is_suspended():
         return
 
     form = forms.DraftQuestionForm(request.POST)
@@ -1229,13 +1253,18 @@ def save_draft_question(request):
             draft.save()
 
 
-@csrf.csrf_exempt
+@csrf.csrf_protect
 @decorators.ajax_only
 @decorators.post_only
 def save_draft_answer(request):
     """saves draft answers"""
-    #todo: allow drafts for anonymous users
-    if request.user.is_anonymous():
+    #todo: maybe allow drafts for anonymous users
+    if request.user.is_anonymous() \
+        or request.user.is_read_only() \
+        or askbot_settings.READ_ONLY_MODE_ENABLED \
+        or request.user.is_active == False \
+        or request.user.is_blocked() \
+        or request.user.is_suspended():
         return
 
     form = forms.DraftAnswerForm(request.POST)
@@ -1432,7 +1461,7 @@ def get_editor(request):
     }
     return HttpResponse(simplejson.dumps(data), content_type='application/json')
 
-@csrf.csrf_exempt
+@csrf.csrf_protect
 @decorators.ajax_only
 @decorators.post_only
 def publish_answer(request):
@@ -1463,7 +1492,7 @@ def publish_answer(request):
     request.user.message_set.create(message=message)
     return {'redirect_url': answer.get_absolute_url()}
 
-@csrf.csrf_exempt
+@csrf.csrf_protect
 @decorators.ajax_only
 @decorators.post_only
 def merge_questions(request):
@@ -1479,3 +1508,61 @@ def merge_questions(request):
         from_question = get_object_or_404(models.Post, id=from_form.cleaned_data['post_id'])
         to_question = get_object_or_404(models.Post, id=to_form.cleaned_data['post_id'])
         request.user.merge_duplicate_questions(from_question, to_question)
+
+
+@decorators.ajax_only
+@decorators.get_only
+def translate_url(request):
+    form = forms.TranslateUrlForm(request.GET)
+    match = None
+    if form.is_valid():
+        from django.core.urlresolvers import resolve, Resolver404, NoReverseMatch
+        try:
+            match = resolve(form.cleaned_data['url'])
+        except Resolver404:
+            pass
+
+    url = None
+    if match:
+        lang = form.cleaned_data['language']
+        site_lang = translation.get_language()
+        translation.activate(lang)
+
+        if match.url_name == 'questions' and None in match.kwargs.values():
+            url = models.get_feed_url(match.kwargs['feed'])
+        else:
+            try:
+                url = reverse(match.url_name, args=match.args, kwargs=match.kwargs)
+            except:
+                pass
+        translation.activate(site_lang)
+
+    return {'url': url}
+
+
+@csrf.csrf_protect
+@decorators.ajax_only
+@decorators.post_only
+def reorder_badges(request):
+    """places given badge to desired position"""
+    if request.user.is_anonymous() \
+        or not request.user.is_administrator_or_moderator():
+        raise exceptions.PermisionDenied()
+
+    form = forms.ReorderBadgesForm(request.POST)
+    if form.is_valid():
+        badge_id = form.cleaned_data['badge_id']
+        position = form.cleaned_data['position']
+        badge = models.BadgeData.objects.get(id=badge_id)
+        badges = list(models.BadgeData.objects.all())
+        badges = filter(lambda v: v.is_enabled(), badges)
+        badges.remove(badge)
+        badges.insert(position, badge)
+        pos = 0
+        for badge in badges:
+            badge.display_order = 10 * pos
+            badge.save()
+            pos += 1
+        return
+
+    raise exceptions.PermissionDenied()

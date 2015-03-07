@@ -52,8 +52,9 @@ from django.utils.html import escape
 from django.utils.translation import ugettext as _
 from django.utils.safestring import mark_safe
 from django.utils import simplejson
-from askbot.mail import send_mail
+from askbot.mail.messages import EmailValidation
 from askbot.utils import decorators as askbot_decorators
+from askbot.utils.functions import format_setting_name
 from askbot.utils.html import site_url
 from recaptcha_works.decorators import fix_recaptcha_remote_ip
 from askbot.deps.django_authopenid.ldap_auth import ldap_create_user
@@ -83,14 +84,13 @@ except ImportError:
 import urllib
 from askbot import forms as askbot_forms
 from askbot.deps.django_authopenid import util
-from askbot.deps.django_authopenid import decorators
 from askbot.deps.django_authopenid.models import UserAssociation, UserEmailVerifier
 from askbot.deps.django_authopenid import forms
 from askbot.deps.django_authopenid.backends import AuthBackend
 import logging
 from askbot.utils.forms import get_next_url
 from askbot.utils.http import get_request_info
-from askbot.models.signals import user_logged_in, user_registered
+from askbot.signals import user_logged_in, user_registered
 
 def create_authenticated_user_account(
     username=None, email=None, password=None,
@@ -161,11 +161,11 @@ def login(request, user):
     logging.debug('logged in user %s with session key %s' % (user.username, session_key))
     #todo: move to auth app
     user_logged_in.send(
-                        request = request,
-                        user = user,
-                        session_key=session_key,
-                        sender=None
-                    )
+                    request=request,
+                    user=user,
+                    session_key=session_key,
+                    sender=None
+                )
 
 #todo: uncouple this from askbot
 def logout(request):
@@ -177,7 +177,7 @@ def logout_page(request):
         'page_class': 'meta',
         'have_federated_login_methods': util.have_enabled_federated_login_methods()
     }
-    return render(request, 'authopenid/logout.html', data)
+    return render(request, 'authopenid/logout.html', Context(data))
 
 def get_url_host(request):
     if request.is_secure():
@@ -292,7 +292,7 @@ def complete_oauth2_signin(request):
     params = providers[provider_name]
     assert(params['type'] == 'oauth2')
 
-    name_token = provider_name.replace('-', '_').upper()
+    name_token = format_setting_name(provider_name)
     client_id = getattr(
             askbot_settings,
             name_token + '_KEY',
@@ -837,9 +837,9 @@ def show_signin_view(
     data['major_login_providers'] = major_login_providers.values()
     data['minor_login_providers'] = minor_login_providers.values()
 
-    return render(request, template_name, data)
+    return render(request, template_name, Context(data))
 
-@csrf.csrf_exempt
+@csrf.csrf_protect
 @askbot_decorators.post_only
 @askbot_decorators.ajax_login_required
 def change_password(request):
@@ -1128,7 +1128,7 @@ def register(request, login_provider_name=None, user_identifier=None):
         'login_type':'openid',
         'gravatar_faq_url':reverse('faq') + '#gravatar',
     }
-    return render(request, 'authopenid/complete.html', data)
+    return render(request, 'authopenid/complete.html', Context(data))
 
 def signin_failure(request, message):
     """
@@ -1193,10 +1193,9 @@ def verify_email_and_register(request):
             return HttpResponseRedirect(reverse('index'))
     else:
         data = {'page_class': 'validate-email-page'}
-        return render(request, 'authopenid/verify_email.html', data)
+        return render(request, 'authopenid/verify_email.html', Context(data))
 
 @not_authenticated
-@decorators.valid_password_login_provider_required
 @csrf.csrf_protect
 @fix_recaptcha_remote_ip
 def signup_with_password(request):
@@ -1207,7 +1206,6 @@ def signup_with_password(request):
     logging.debug(get_request_info(request))
     login_form = forms.LoginForm(initial = {'next': get_next_url(request)})
     #this is safe because second decorator cleans this field
-    provider_name = request.REQUEST['login_provider']
 
     if askbot_settings.USE_RECAPTCHA:
         RegisterForm = forms.SafeClassicRegisterForm
@@ -1218,16 +1216,7 @@ def signup_with_password(request):
     if request.method == 'POST':
         form = RegisterForm(request.POST)
 
-        #validation outside if to remember form values
-        logging.debug('validating classic register form')
-        form1_is_valid = form.is_valid()
-        if form1_is_valid:
-            logging.debug('classic register form validated')
-        else:
-            logging.debug('classic register form is not valid')
-
-        if form1_is_valid:
-            logging.debug('both forms are valid')
+        if form.is_valid():
             next = form.cleaned_data['next']
             username = form.cleaned_data['username']
             password = form.cleaned_data['password1']
@@ -1245,46 +1234,35 @@ def signup_with_password(request):
             else:
                 email_verifier = UserEmailVerifier(key=generate_random_key())
                 email_verifier.value = {'username': username,
-                                        'login_provider_name': provider_name,
+                                        'login_provider_name': 'local',
                                         'email': email, 'password': password}
                 email_verifier.save()
-                send_email_key(email, email_verifier.key,
-                               handler_url_name='verify_email_and_register',
-                               subject=_('Activate your account'))
+                send_email_key(
+                    email, email_verifier.key,
+                    handler_url_name='verify_email_and_register'
+                )
                 redirect_url = reverse('verify_email_and_register') + \
                                 '?next=' + get_next_url(request)
                 return HttpResponseRedirect(redirect_url)
-
-        else:
-            #todo: this can be solved with a decorator, maybe
-            form.initial['login_provider'] = provider_name
-            logging.debug('create classic account forms were invalid')
     else:
         #todo: here we have duplication of get_password_login_provider...
-        form = RegisterForm(
-                        initial={
-                            'next': get_next_url(request),
-                            'login_provider': provider_name
-                        }
-                    )
-    logging.debug('printing legacy signup form')
+        form = RegisterForm(initial={'next': get_next_url(request)})
 
     major_login_providers = util.get_enabled_major_login_providers()
     minor_login_providers = util.get_enabled_minor_login_providers()
 
     context_data = {
-                'form': form,
-                'page_class': 'openid-signin',
-                'major_login_providers': major_login_providers.values(),
-                'minor_login_providers': minor_login_providers.values(),
-                'login_form': login_form
-            }
+        'form': form,
+        'page_class': 'openid-signin',
+        'major_login_providers': major_login_providers.values(),
+        'minor_login_providers': minor_login_providers.values(),
+        'login_form': login_form
+    }
     return render(
-                request,
-                'authopenid/signup_with_password.html',
-                context_data
-            )
-    #what if request is not posted?
+        request,
+        'authopenid/signup_with_password.html',
+        Context(context_data)
+    )
 
 @login_required
 def signout(request):
@@ -1328,20 +1306,16 @@ def set_new_email(user, new_email):
         user.email_isvalid = False
         user.save()
 
-def send_email_key(email, key, handler_url_name='user_account_recover',
-        subject = _("Recover your %(site)s account") %
-        {'site': askbot_settings.APP_SHORT_NAME}):
+def send_email_key(address, key, handler_url_name='user_account_recover'):
     """private function. sends email containing validation key
     to user's email address
     """
-    data = {
-        'site_name': askbot_settings.APP_SHORT_NAME,
-        'validation_link': site_url(reverse(handler_url_name)) + \
-                            '?validation_code=' + key
-    }
-    template = get_template('authopenid/email_validation.html')
-    message = template.render(data)#todo: inject language preference
-    send_mail(subject, message, django_settings.DEFAULT_FROM_EMAIL, [email])
+    email = EmailValidation({
+        'handler_url_name': handler_url_name,
+        'key': key
+    })
+    email.send([address,])
+
 
 def send_user_new_email_key(user):
     user.email_key = generate_random_key()

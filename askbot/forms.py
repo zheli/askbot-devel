@@ -238,6 +238,26 @@ class LanguageField(forms.ChoiceField):
         super(LanguageField, self).__init__(*args, **kwargs)
 
 
+class LanguageForm(forms.Form):
+    language = LanguageField()
+
+
+class LanguagePrefsForm(forms.Form):
+    languages = forms.MultipleChoiceField(
+                        widget=forms.CheckboxSelectMultiple,
+                        choices=django_settings.LANGUAGES,
+                        required=False
+                    )
+    primary_language = forms.ChoiceField(
+                        choices=django_settings.LANGUAGES
+                    )
+
+
+class TranslateUrlForm(forms.Form):
+    language = LanguageField()
+    url = forms.CharField(max_length=2048)
+
+
 class SuppressEmailField(forms.BooleanField):
     def __init__(self):
         super(SuppressEmailField, self).__init__()
@@ -508,6 +528,21 @@ class WikiField(forms.BooleanField):
     def clean(self, value):
         return value and askbot_settings.WIKI_ON
 
+
+class PageField(forms.IntegerField):
+
+    def __init__(self, *args, **kwargs):
+        self.required = False
+        super(PageField, self).__init__(*args, **kwargs)
+
+    def clean(self, value):
+        try:
+            value = int(value)
+            return value if value > 0 else 1
+        except (TypeError, ValueError):
+            return 1
+
+
 class SummaryField(forms.CharField):
 
     def __init__(self, *args, **kwargs):
@@ -523,6 +558,7 @@ class SummaryField(forms.CharField):
             'fixed spelling, grammar, improved style...), this '
             'field is optional'
         )
+
 
 class EditorForm(forms.Form):
     """form with one field - `editor`
@@ -607,11 +643,12 @@ class ChangeUserReputationForm(forms.Form):
 
     user_reputation_delta = forms.IntegerField(
                             min_value=1,
+                            max_value=32767,
                             label=_(
                                 'Enter number of points to add or subtract'
                             )
                         )
-    comment = forms.CharField(max_length=128)
+    comment = forms.CharField(label=_('Comment'), max_length=128)
 
     def clean_comment(self):
         if 'comment' in self.cleaned_data:
@@ -1170,7 +1207,7 @@ class AnswerForm(PostAsSomeoneForm, PostPrivatelyForm):
     def save(self, question, user, ip_addr=None):
         wiki = self.cleaned_data['wiki']
         text = self.cleaned_data['text']
-        is_private = self.cleaned_data['post_privately']        
+        is_private = self.cleaned_data['post_privately']
 
         return user.post_answer(
             question = question,
@@ -1407,7 +1444,7 @@ class EditUserForm(forms.Form):
         if user.country is None:
             country = 'unknown'
         else:
-            country = user.country
+            country = user.country.code
         self.fields['country'].initial = country
         self.fields['show_country'].initial = user.show_country
         self.fields['show_marked_tags'].initial = user.show_marked_tags
@@ -1672,6 +1709,9 @@ class BulkTagSubscriptionForm(forms.Form):
 class GetDataForPostForm(forms.Form):
     post_id = forms.IntegerField()
 
+class GetCommentDataForPostForm(GetDataForPostForm):
+    avatar_size = forms.IntegerField()
+
 class GetUserItemsForm(forms.Form):
     page_size = forms.IntegerField(required=False)
     page_number = forms.IntegerField(min_value=1)
@@ -1680,6 +1720,7 @@ class GetUserItemsForm(forms.Form):
 class NewCommentForm(forms.Form):
     comment = forms.CharField(max)
     post_id = forms.IntegerField()
+    avatar_size = forms.IntegerField()
     def __init__(self, *args, **kwargs):
         super(NewCommentForm, self).__init__(*args, **kwargs)
         self.fields['comment'] = forms.CharField(
@@ -1689,8 +1730,19 @@ class NewCommentForm(forms.Form):
 class EditCommentForm(forms.Form):
     comment_id = forms.IntegerField()
     comment = forms.CharField()
+    avatar_size = forms.IntegerField()
     suppress_email = SuppressEmailField()
 
 
 class ProcessCommentForm(forms.Form):
     comment_id = forms.IntegerField()
+    avatar_size = forms.IntegerField()
+
+
+class ConvertCommentForm(forms.Form):
+    comment_id = forms.IntegerField()
+
+
+class ReorderBadgesForm(forms.Form):
+    badge_id = forms.IntegerField()
+    position = forms.IntegerField()

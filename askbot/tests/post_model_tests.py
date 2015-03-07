@@ -369,7 +369,7 @@ class ThreadRenderLowLevelCachingTests(AskbotTestCase):
         cache.cache = LocMemCache('', {})  # Enable local caching
 
         thread = self.q.thread
-        key = Thread.SUMMARY_CACHE_KEY_TPL % (thread.id, 'en')
+        key = thread.get_summary_cache_key()
 
         self.assertTrue(thread.summary_html_cached())
         self.assertIsNotNone(thread.get_cached_summary_html())
@@ -384,6 +384,7 @@ class ThreadRenderLowLevelCachingTests(AskbotTestCase):
             'thread': thread,
             'question': self.q,
             'search_state': DummySearchState(),
+            'visitor': None
         }
         html = get_template('widgets/question_summary.html').render(Context(context))
         filled_html = html.replace('<<<tag1>>>', SearchState.get_empty().add_tag('tag1').full_url())\

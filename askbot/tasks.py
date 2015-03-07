@@ -17,9 +17,9 @@ That is the reason for having two types of methods here:
 * celery tasks - shells that reconstitute the necessary ORM
   objects and call the base methods
 """
+import logging
 import sys
 import traceback
-import logging
 import uuid
 
 from django.contrib.contenttypes.models import ContentType
@@ -28,15 +28,32 @@ from django.template.loader import get_template
 from django.utils.translation import ugettext as _
 from django.utils.translation import activate as activate_language
 from django.utils import simplejson
+
 from celery.decorators import task
+from celery.utils.log import get_task_logger
+
 from askbot.conf import settings as askbot_settings
 from askbot import const
 from askbot import mail
-from askbot.models import Post, Thread, User, ReplyAddress
+from askbot.mail.messages import (
+                        InstantEmailAlert,
+                        ApprovedPostNotification,
+                        ApprovedPostNotificationRespondable
+                    )
+from askbot.models import (
+    Activity,
+    Post,
+    PostRevision,
+    User,
+    ReplyAddress,
+)
 from askbot.models.badges import award_badges_signal
-from askbot.models import get_reply_to_addresses, format_instant_notification_email
 from askbot import exceptions as askbot_exceptions
 from askbot.utils.twitter import Twitter
+
+
+logger = get_task_logger(__name__)
+
 
 # TODO: Make exceptions raised inside record_post_update_celery_task() ...
 #       ... propagate upwards to test runner, if only CELERY_ALWAYS_EAGER = True
@@ -70,19 +87,27 @@ def tweet_new_post_task(post_id):
         twitter.tweet(tweet_text, access_token=token)
         
 
-@task(ignore_result = True)
-def notify_author_of_published_revision_celery_task(revision):
+@task(ignore_result=True)
+def notify_author_of_published_revision_celery_task(revision_id):
     #todo: move this to ``askbot.mail`` module
     #for answerable email only for now, because
     #we don't yet have the template for the read-only notification
 
-    data = {
-        'site_name': askbot_settings.APP_SHORT_NAME,
-        'post': revision.post
-    }
-    headers = None
+    try:
+        revision = PostRevision.objects.get(pk=revision_id)
+    except PostRevision.DoesNotExist:
+        logger.error("Unable to fetch revision with id %s" % revision_id)
+        return
 
-    if askbot_settings.REPLY_BY_EMAIL:
+    activate_language(revision.post.language_code)
+
+    if askbot_settings.REPLY_BY_EMAIL == False:
+        email = ApprovedPostNotification({
+            'post': revision.post,
+            'recipient_user': revision.author
+        })
+        email.send([revision.author.email,])
+    else:
         #generate two reply codes (one for edit and one for addition)
         #to format an answerable email or not answerable email
         reply_options = {
@@ -98,38 +123,22 @@ def notify_author_of_published_revision_celery_task(revision):
                                                         **reply_options
                                                     ).as_email_address()
 
-        #populate template context variables
-        reply_code = append_content_address + ',' + replace_content_address
         if revision.post.post_type == 'question':
             mailto_link_subject = revision.post.thread.title
         else:
             mailto_link_subject = _('make an edit by email')
-        #todo: possibly add more mailto thread headers to organize messages
 
-        prompt = _('To add to your post EDIT ABOVE THIS LINE')
-        reply_separator_line = const.SIMPLE_REPLY_SEPARATOR_TEMPLATE % prompt
-        data['reply_code'] = reply_code
-        data['author_email_signature'] = revision.author.email_signature
-        data['replace_content_address'] = replace_content_address
-        data['reply_separator_line'] = reply_separator_line
-        data['mailto_link_subject'] = mailto_link_subject
-        headers = {'Reply-To': append_content_address}
+        email = ApprovedPostNotificationRespondable({
+            'revision': revision,
+            'mailto_link_subject': mailto_link_subject,
+            'reply_code': append_content_address + ',' + replace_content_address,
+            'append_content_address': append_content_address,
+            'replace_content_address': replace_content_address
+        })
+        email.send([revision.author.email,])
 
-    #load the template
-    activate_language(revision.post.language_code)
-    template = get_template('email/notify_author_about_approved_post.html')
-    #todo: possibly add headers to organize messages in threads
-    #send the message
-    mail.send_mail(
-        subject_line = _('Your post at %(site_name)s is now published') % data,
-        body_text = template.render(Context(data)),
-        recipient_list = [revision.author.email,],
-        related_object = revision,
-        activity_type = const.TYPE_ACTIVITY_EMAIL_UPDATE_SENT,
-        headers = headers
-    )
 
-@task(ignore_result = True)
+@task(ignore_result=True)
 def record_post_update_celery_task(
         post_id,
         post_content_type_id,
@@ -172,9 +181,9 @@ def record_post_update_celery_task(
         print >>sys.stderr, unicode(traceback.format_exc()).encode('utf-8')
         raise
 
-@task(ignore_result = True)
+@task(ignore_result=True)
 def record_question_visit(
-    question_post = None,
+    question_post_id = None,
     user_id = None,
     update_view_count = False):
     """celery task which records question visit by a person
@@ -183,20 +192,23 @@ def record_question_visit(
     question visit
     """
     #1) maybe update the view count
-    #question_post = Post.objects.filter(
-    #    id = question_post_id
-    #).select_related('thread')[0]
-    if update_view_count:
+
+    try:
+        question_post = Post.objects.get(id=question_post_id)
+    except Post.DoesNotExist:
+        logger.error("Unable to fetch post with id %s" % question_post_id)
+        return
+
+    if update_view_count and question_post.thread_id:
         question_post.thread.increase_view_count()
 
-    #we do not track visits per anon user
+    # we do not track visits per anon user
     if user_id is None:
         return
 
     user = User.objects.get(id=user_id)
 
     #2) question view count per user and clear response displays
-    #user = User.objects.get(id = user_id)
     if user.is_authenticated():
         #get response notifications
         user.visit_question(question_post)
@@ -211,34 +223,30 @@ def record_question_visit(
 
 @task()
 def send_instant_notifications_about_activity_in_post(
-                                                update_activity = None,
-                                                post = None,
-                                                recipients = None,
+                                                activity_id=None,
+                                                post_id=None,
+                                                recipients=None,
                                             ):
-    #reload object from the database
-    post = Post.objects.get(id=post.id)
-    if post.is_approved() is False:
-        return
 
     if recipients is None:
         return
 
     acceptable_types = const.RESPONSE_ACTIVITY_TYPES_FOR_INSTANT_NOTIFICATIONS
-
-    if update_activity.activity_type not in acceptable_types:
+    try:
+        update_activity = Activity.objects.filter(activity_type__in=acceptable_types).get(id=activity_id)
+    except Activity.DoesNotExist:
+        logger.error("Unable to fetch activity with id %s" % post_id)
         return
 
-    #calculate some variables used in the loop below
-    update_type_map = const.RESPONSE_ACTIVITY_TYPE_MAP_FOR_TEMPLATES
-    update_type = update_type_map[update_activity.activity_type]
-    origin_post = post.get_origin_post()
-    headers = mail.thread_headers(
-                            post,
-                            origin_post,
-                            update_activity.activity_type
-                        )
+    try:
+        post = Post.objects.get(id=post_id)
+    except Post.DoesNotExist:
+        logger.error("Unable to fetch post with id %s" % post_id)
+        return
 
-    logger = logging.getLogger()
+    if post.is_approved() is False:
+        return
+
     if logger.getEffectiveLevel() <= logging.DEBUG:
         log_id = uuid.uuid1()
         message = 'email-alert %s, logId=%s' % (post.get_absolute_url(), log_id)
@@ -246,35 +254,20 @@ def send_instant_notifications_about_activity_in_post(
     else:
         log_id = None
 
-
     for user in recipients:
         if user.is_blocked():
             continue
 
-        reply_address, alt_reply_address = get_reply_to_addresses(user, post)
-
         activate_language(post.language_code)
-        subject_line, body_text = format_instant_notification_email(
-                            to_user = user,
-                            from_user = update_activity.user,
-                            post = post,
-                            reply_address = reply_address,
-                            alt_reply_address = alt_reply_address,
-                            update_type = update_type,
-                            template = get_template('email/instant_notification.html')
-                        )
 
-        headers['Reply-To'] = reply_address
+        email = InstantEmailAlert({
+                        'to_user': user,
+                        'from_user': update_activity.user,
+                        'post': post,
+                        'update_activity': update_activity
+                    })
         try:
-            mail.send_mail(
-                subject_line=subject_line,
-                body_text=body_text,
-                recipient_list=[user.email],
-                related_object=origin_post,
-                activity_type=const.TYPE_ACTIVITY_EMAIL_UPDATE_SENT,
-                headers=headers,
-                raise_on_failure=True
-            )
+            email.send([user.email])
         except askbot_exceptions.EmailNotSent, error:
             logger.debug(
                 '%s, error=%s, logId=%s' % (user.email, error, log_id)

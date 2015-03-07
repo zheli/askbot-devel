@@ -35,7 +35,7 @@ from django.contrib.auth.models import User
 from askbot import exceptions as askbot_exceptions
 from askbot import forms
 from askbot import models
-from askbot.models import signals
+from askbot import signals
 from askbot.conf import settings as askbot_settings
 from askbot.utils import decorators
 from askbot.utils.forms import format_errors
@@ -60,6 +60,7 @@ QUESTIONS_PAGE_SIZE = 10
 # used in answers
 ANSWERS_PAGE_SIZE = 10
 
+#todo: make this work with csrf
 @csrf.csrf_exempt
 def upload(request):#ajax upload file to a question or answer
     """view that handles file upload via Ajax
@@ -335,7 +336,7 @@ def ask(request):#view used to ask a new question
     return render(request, 'ask.html', data)
 
 @login_required
-@csrf.csrf_exempt
+@csrf.csrf_protect
 def retag_question(request, id):
     """retag question view
     """
@@ -679,7 +680,7 @@ def answer(request, id, form_class=forms.AnswerForm):#process a new answer
 
     return HttpResponseRedirect(question.get_absolute_url())
 
-def __generate_comments_json(obj, user):#non-view generates json data for the post comments
+def __generate_comments_json(obj, user, avatar_size):
     """non-view generates json data for the post comments
     """
     models.Post.objects.precache_comments(for_posts=[obj], visitor=user)
@@ -710,7 +711,8 @@ def __generate_comments_json(obj, user):#non-view generates json data for the po
             'comment_added_at': str(comment.added_at.replace(microsecond = 0)) + tz,
             'html': comment.html,
             'user_display_name': escape(comment_owner.username),
-            'user_url': comment_owner.get_profile_url(),
+            'user_profile_url': comment_owner.get_profile_url(),
+            'user_avatar_url': comment_owner.get_avatar_url(avatar_size),
             'user_id': comment_owner.id,
             'is_deletable': is_deletable,
             'is_editable': is_editable,
@@ -723,7 +725,7 @@ def __generate_comments_json(obj, user):#non-view generates json data for the po
     data = simplejson.dumps(json_comments)
     return HttpResponse(data, content_type="application/json")
 
-@csrf.csrf_exempt
+@csrf.csrf_protect
 @decorators.check_spam('comment')
 def post_comments(request):#generic ajax handler to load comments to an object
     """todo: fixme: post_comments is ambigous:
@@ -731,17 +733,23 @@ def post_comments(request):#generic ajax handler to load comments to an object
     add a new comment to post
     """
     # only support get post comments by ajax now
-
     post_type = request.REQUEST.get('post_type', '')
     if not request.is_ajax() or post_type not in ('question', 'answer'):
         raise Http404  # TODO: Shouldn't be 404! More like 400, 403 or sth more specific
+
+    if post_type == 'question' \
+        and askbot_settings.QUESTION_COMMENTS_ENABLED == False:
+        raise Http404
+    elif post_type == 'answer' \
+        and askbot_settings.ANSWER_COMMENTS_ENABLED == False:
+        raise Http404
 
     user = request.user
 
     if request.method == 'POST':
         form = forms.NewCommentForm(request.POST)
     elif request.method == 'GET':
-        form = forms.GetDataForPostForm(request.GET)
+        form = forms.GetCommentDataForPostForm(request.GET)
 
     if form.is_valid() == False:
         return HttpResponseBadRequest(
@@ -750,6 +758,7 @@ def post_comments(request):#generic ajax handler to load comments to an object
         )
 
     post_id = form.cleaned_data['post_id']
+    avatar_size = form.cleaned_data['avatar_size']
     try:
         post = models.Post.objects.get(id=post_id)
     except models.Post.DoesNotExist:
@@ -758,7 +767,7 @@ def post_comments(request):#generic ajax handler to load comments to an object
         )
 
     if request.method == "GET":
-        response = __generate_comments_json(post, user)
+        response = __generate_comments_json(post, user, avatar_size)
     elif request.method == "POST":
         try:
             if user.is_anonymous():
@@ -781,13 +790,13 @@ def post_comments(request):#generic ajax handler to load comments to an object
                 user=user,
                 form_data=form.cleaned_data
             )
-            response = __generate_comments_json(post, user)
+            response = __generate_comments_json(post, user, avatar_size)
         except exceptions.PermissionDenied, e:
             response = HttpResponseForbidden(unicode(e), content_type="application/json")
 
     return response
 
-@csrf.csrf_exempt
+@csrf.csrf_protect
 @decorators.ajax_only
 #@decorators.check_spam('comment')
 def edit_comment(request):
@@ -844,7 +853,7 @@ def edit_comment(request):
         'voted': comment_post.is_upvoted_by(request.user),
     }
 
-@csrf.csrf_exempt
+@csrf.csrf_protect
 def delete_comment(request):
     """ajax handler to delete comment
     """
@@ -876,7 +885,8 @@ def delete_comment(request):
             parent.save()
             parent.thread.invalidate_cached_data()
 
-            return __generate_comments_json(parent, request.user)
+            avatar_size = form.cleaned_data['avatar_size']
+            return __generate_comments_json(parent, request.user, avatar_size)
 
         raise exceptions.PermissionDenied(
                     _('sorry, we seem to have some technical difficulties')
@@ -897,7 +907,7 @@ def comment_to_answer(request):
                 {'sign_in_url': url_utils.get_login_url()}
         raise exceptions.PermissionDenied(msg)
 
-    form = forms.ProcessCommentForm(request.POST)
+    form = forms.ConvertCommentForm(request.POST)
     if form.is_valid() == False:
         raise Http404
 

@@ -50,44 +50,6 @@ def extract_first_email_address(text):
     else:
         return None
 
-def thread_headers(post, orig_post, update):
-    """modify headers for email messages, so
-    that emails appear as threaded conversations in gmail"""
-    suffix_id = django_settings.SERVER_EMAIL
-    if update == const.TYPE_ACTIVITY_ASK_QUESTION:
-        msg_id = "NQ-%s-%s" % (post.id, suffix_id)
-        headers = {'Message-ID': msg_id}
-    elif update == const.TYPE_ACTIVITY_ANSWER:
-        msg_id = "NA-%s-%s" % (post.id, suffix_id)
-        orig_id = "NQ-%s-%s" % (orig_post.id, suffix_id)
-        headers = {'Message-ID': msg_id,
-                  'In-Reply-To': orig_id}
-    elif update == const.TYPE_ACTIVITY_UPDATE_QUESTION:
-        msg_id = "UQ-%s-%s-%s" % (post.id, post.last_edited_at, suffix_id)
-        orig_id = "NQ-%s-%s" % (orig_post.id, suffix_id)
-        headers = {'Message-ID': msg_id,
-                  'In-Reply-To': orig_id}
-    elif update == const.TYPE_ACTIVITY_COMMENT_QUESTION:
-        msg_id = "CQ-%s-%s" % (post.id, suffix_id)
-        orig_id = "NQ-%s-%s" % (orig_post.id, suffix_id)
-        headers = {'Message-ID': msg_id,
-                  'In-Reply-To': orig_id}
-    elif update == const.TYPE_ACTIVITY_UPDATE_ANSWER:
-        msg_id = "UA-%s-%s-%s" % (post.id, post.last_edited_at, suffix_id)
-        orig_id = "NQ-%s-%s" % (orig_post.id, suffix_id)
-        headers = {'Message-ID': msg_id,
-                  'In-Reply-To': orig_id}
-    elif update == const.TYPE_ACTIVITY_COMMENT_ANSWER:
-        msg_id = "CA-%s-%s" % (post.id, suffix_id)
-        orig_id = "NQ-%s-%s" % (orig_post.id, suffix_id)
-        headers = {'Message-ID': msg_id,
-                  'In-Reply-To': orig_id}
-    else:
-        # Unknown type -> Can't set headers
-        return {}
-
-    return headers
-
 def _send_mail(subject_line, body_text, sender_email, recipient_list, headers=None, attachments=None):
     """base send_mail function, which will attach email in html format
     if html email is enabled"""
@@ -123,8 +85,6 @@ def send_mail(
             body_text=None,
             from_email=None,
             recipient_list=None,
-            activity_type=None,
-            related_object=None,
             headers=None,
             raise_on_failure=False,
             attachments=None
@@ -135,10 +95,6 @@ def send_mail(
     logs email sending activity
     and any errors are reported as critical
     in the main log file
-
-    related_object is not mandatory, other arguments
-    are. related_object (if given, will be saved in
-    the activity record)
 
     if raise_on_failure is True, exceptions.EmailNotSent is raised
     `attachments` is a tuple of triples ((filename, filedata, mimetype), ...)
@@ -158,8 +114,6 @@ def send_mail(
             attachments=attachments
         )
         logging.debug('sent update to %s' % ','.join(recipient_list))
-        if related_object is not None:
-            assert(activity_type is not None)
     except Exception, error:
         sys.stderr.write('\n' + unicode(error).encode('utf-8') + '\n')
         if raise_on_failure == True:
@@ -400,7 +354,10 @@ def process_emailed_question(
     #a bunch of imports here, to avoid potential circular import issues
     from askbot.forms import AskByEmailForm
     from askbot.models import ReplyAddress, User
-    from askbot.mail import messages
+    from askbot.mail.messages import (
+                            AskForSignature,
+                            InsufficientReputation
+                        )
 
     reply_to = None
     try:
@@ -416,10 +373,10 @@ def process_emailed_question(
             email_address = form.cleaned_data['email']
 
             if user.can_post_by_email() is False:
-                raise PermissionDenied(messages.insufficient_reputation(user))
+                email = InsufficientReputation({'user': user})
+                raise PermissionDenied(email.render_body())
 
             body_text = form.cleaned_data['body_text']
-
             stripped_body_text = user.strip_email_signature(body_text)
 
             #note that signature '' means it is unset and 'empty signature' is a sentinel
@@ -439,13 +396,16 @@ def process_emailed_question(
             #ask for signature response if user's email has not been
             #validated yet or if email signature could not be found
             if need_new_signature:
-
-                reply_to = ReplyAddress.objects.create_new(
-                    user = user,
-                    reply_action = 'validate_email'
+                footer_code = ReplyAddress.objects.create_new(
+                    user=user,
+                    reply_action='validate_email'
                 ).as_email_address(prefix='welcome-')
-                message = messages.ask_for_signature(user, footer_code = reply_to)
-                raise PermissionDenied(message)
+
+                email = AskForSignature({
+                                'user': user,
+                                'footer_code': footer_code
+                            })
+                raise PermissionDenied(email.render_body())
 
             tagnames = form.cleaned_data['tagnames']
             title = form.cleaned_data['title']
@@ -453,7 +413,6 @@ def process_emailed_question(
             #defect - here we might get "too many tags" issue
             if tags:
                 tagnames += ' ' + ' '.join(tags)
-
 
             user.post_question(
                 title=title,

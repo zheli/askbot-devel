@@ -39,6 +39,7 @@ from askbot.forms import AnswerForm
 from askbot.forms import ShowQuestionForm
 from askbot.forms import GetUserItemsForm
 from askbot.forms import GetDataForPostForm
+from askbot.forms import PageField
 from askbot.utils.loading import load_module
 from askbot import conf
 from askbot import models
@@ -200,10 +201,21 @@ def questions(request, **kwargs):
             'questions': questions_html.replace('\n',''),
             'non_existing_tags': meta_data['non_existing_tags'],
         }
-        ajax_data['related_tags'] = [{
-            'name': escape(tag.name),
-            'used_count': humanize.intcomma(tag.local_used_count)
-        } for tag in related_tags]
+
+        related_tags_tpl = get_template('widgets/related_tags.html')
+        related_tags_data = {
+            'tags': related_tags,
+            'tag_list_type': tag_list_type,
+            'query_string': search_state.query_string(),
+            'search_state': search_state,
+            'language_code': translation.get_language(),
+        }
+        if tag_list_type == 'cloud':
+            related_tags_data['font_size'] = extra_tags.get_tag_font_size(related_tags)
+
+        ajax_data['related_tags_html'] = related_tags_tpl.render(
+            RequestContext(request, related_tags_data)
+        )
 
         #here we add and then delete some items
         #to allow extra context processor to work
@@ -254,7 +266,7 @@ def questions(request, **kwargs):
             'email_tag_filter_strategy_choices': conf.get_tag_email_filter_strategy_choices(),
             'query_string': search_state.query_string(),
             'search_state': search_state,
-            'feed_url': context_feed_url,
+            'feed_url': context_feed_url
         }
 
         extra_context = context.get_extra(
@@ -273,13 +285,14 @@ def questions(request, **kwargs):
             if domain_is_bad():
                 url = askbot_settings.get_setting_url('QA_SITE_SETTINGS', 'APP_URL')
                 msg = _(
-                    'Please go to '
-                    '<a href="%s">"settings->URLs, keywords and greetings"</a> '
+                    'Please go to Settings -> %s '
                     'and set the base url for your site to function properly'
                 ) % url
                 request.user.message_set.create(message=msg)
 
         return render(request, 'main_page.html', template_data)
+        #print datetime.datetime.now() - before
+        #return res
 
 
 def get_top_answers(request):
@@ -304,10 +317,7 @@ def tags(request):#view showing a listing of available tags - plain list
     #1) Get parameters. This normally belongs to form cleaning.
     post_data = request.GET
     sortby = post_data.get('sort', 'used')
-    try:
-        page = int(post_data.get('page', '1'))
-    except ValueError:
-        page = 1
+    page = PageField().clean(post_data.get('page'))
 
     if sortby == 'name':
         order_by = 'name'
@@ -353,7 +363,7 @@ def tags(request):#view showing a listing of available tags - plain list
             'pages': objects_list.num_pages,
             'current_page_number': page,
             'page_object': tags,
-            'base_url' : reverse('tags') + '?sort=%s&amp;' % sortby
+            'base_url' : reverse('tags') + '?sort=%s&' % sortby
         }
         paginator_context = functions.setup_paginator(paginator_data)
         data['paginator_context'] = paginator_context
@@ -433,10 +443,11 @@ def question(request, id):#refactor - long subroutine. display question body, an
     #redirect if slug in the url is wrong
     if request.path.split('/')[-2] != question_post.slug:
         logging.debug('no slug match!')
+        lang = translation.get_language()
         question_url = '?'.join((
-                            question_post.get_absolute_url(),
-                            urllib.urlencode(request.GET)
-                        ))
+                        question_post.get_absolute_url(language=lang),
+                        urllib.urlencode(request.GET)
+                    ))
         return HttpResponseRedirect(question_url)
 
 
@@ -561,9 +572,9 @@ def question(request, id):#refactor - long subroutine. display question body, an
         #2) run the slower jobs in a celery task
         from askbot import tasks
         tasks.record_question_visit.delay(
-            question_post = question_post,
-            user_id = request.user.id,
-            update_view_count = update_view_count
+            question_post_id=question_post.id,
+            user_id=request.user.id,
+            update_view_count=update_view_count
         )
 
     paginator_data = {
@@ -571,7 +582,7 @@ def question(request, id):#refactor - long subroutine. display question body, an
         'pages': objects_list.num_pages,
         'current_page_number': show_page,
         'page_object': page_objects,
-        'base_url' : request.path + '?sort=%s&amp;' % answer_sort_method,
+        'base_url' : request.path + '?sort=%s&' % answer_sort_method,
     }
     paginator_context = functions.setup_paginator(paginator_data)
 
@@ -605,7 +616,8 @@ def question(request, id):#refactor - long subroutine. display question body, an
     answer_form = answer_form_class(initial=initial, user=request.user)
 
     user_can_post_comment = (
-        request.user.is_authenticated() and request.user.can_post_comment()
+        request.user.is_authenticated() \
+        and request.user.can_post_comment(question_post)
     )
 
     new_answer_allowed = True
@@ -613,7 +625,7 @@ def question(request, id):#refactor - long subroutine. display question body, an
     if request.user.is_authenticated():
         if askbot_settings.LIMIT_ONE_ANSWER_PER_USER:
             for answer in answers:
-                if answer.author == request.user:
+                if answer.author_id == request.user.pk:
                     new_answer_allowed = False
                     previous_answer = answer
                     break
@@ -664,8 +676,9 @@ def question(request, id):#refactor - long subroutine. display question body, an
     extra = context.get_extra('ASKBOT_QUESTION_PAGE_EXTRA_CONTEXT', request, data)
     data.update(extra)
 
-    #print 'generated in ', datetime.datetime.now() - before
     return render(request, 'question.html', data)
+    #print datetime.datetime.now() - before
+    #return res
 
 def revisions(request, id, post_type = None):
     assert post_type in ('question', 'answer')
@@ -690,7 +703,6 @@ def revisions(request, id, post_type = None):
     }
     return render(request, 'revisions.html', data)
 
-@csrf.csrf_exempt
 @ajax_only
 @anonymous_forbidden
 @get_only
@@ -704,14 +716,13 @@ def get_comment(request):
     request.user.assert_can_edit_comment(comment)
 
     try:
+        #try to get suggested edit
         rev = comment.revisions.get(revision=0)
     except models.PostRevision.DoesNotExist:
         rev = comment.get_latest_revision()
-
     return {'text': rev.text}
 
 
-@csrf.csrf_exempt
 @ajax_only
 @anonymous_forbidden
 @get_only

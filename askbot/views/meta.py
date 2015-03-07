@@ -4,6 +4,7 @@
 This module contains a collection of views displaying all sorts of secondary and mostly static content.
 """
 from django.shortcuts import render_to_response, get_object_or_404
+from django.conf import settings as django_settings
 from django.core.urlresolvers import reverse
 from django.core.paginator import Paginator, EmptyPage, InvalidPage
 from django.shortcuts import render
@@ -25,6 +26,7 @@ from django.db.models import Max, Count
 from askbot import skins
 from askbot.conf import settings as askbot_settings
 from askbot.forms import FeedbackForm
+from askbot.forms import PageField
 from askbot.utils.url_utils import get_login_url
 from askbot.utils.forms import get_next_url
 from askbot.mail import mail_moderators, send_mail
@@ -89,11 +91,21 @@ def server_error(request, template='500.html'):
     return generic_view(request, template)
 
 def help(request):
-    data = {
-        'app_name': askbot_settings.APP_SHORT_NAME,
-        'page_class': 'meta'
-    }
-    return render(request, 'help.html', data)
+    if askbot_settings.FORUM_HELP.strip() != '':
+        data = {
+            'title': _('Help'),
+            'content': askbot_settings.FORUM_HELP,
+            'page_class': 'meta',
+            'active_tab': 'help',
+        }
+        return render(request, 'static_page.html', data)
+    else:
+        data = {
+            'active_tab': 'help',
+            'app_name': askbot_settings.APP_SHORT_NAME,
+            'page_class': 'meta'
+        }
+        return render(request, 'help_static.html', data)
 
 def faq(request):
     if askbot_settings.FORUM_FAQ.strip() != '':
@@ -101,6 +113,7 @@ def faq(request):
             'title': _('FAQ'),
             'content': askbot_settings.FORUM_FAQ,
             'page_class': 'meta',
+            'active_tab': 'faq',
         }
         return render(request, 'static_page.html', data)
     else:
@@ -108,6 +121,7 @@ def faq(request):
             'gravatar_faq_url': reverse('faq') + '#gravatar',
             'ask_question_url': reverse('ask'),
             'page_class': 'meta',
+            'active_tab': 'faq',
         }
         return render(request, 'faq_static.html', data)
 
@@ -182,7 +196,10 @@ def badges(request):#user status/reputation system
     if askbot_settings.BADGES_MODE != 'public':
         raise Http404
     known_badges = badge_data.BADGES.keys()
-    badges = BadgeData.objects.filter(slug__in = known_badges).order_by('slug')
+    badges = BadgeData.objects.filter(slug__in=known_badges)
+
+    badges = filter(lambda v: v.is_enabled(), badges)
+
     my_badge_ids = list()
     if request.user.is_authenticated():
         my_badge_ids = Award.objects.filter(
@@ -235,7 +252,7 @@ def list_suggested_tags(request):
     #paginate moderated tags
     paginator = Paginator(tags, 20)
 
-    page_no = request.GET.get('page', '1')
+    page_no = PageField().clean(request.GET.get('page'))
 
     try:
         page = paginator.page(page_no)

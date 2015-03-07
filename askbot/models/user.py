@@ -21,6 +21,41 @@ from collections import defaultdict
 
 PERSONAL_GROUP_NAME_PREFIX = '_personal_'
 
+class MockUser(object):
+    def __init__(self):
+        self.username = ''
+
+    def get_avatar_url(self, size):
+        return ''
+
+    def get_profile_url(self):
+        return ''
+
+    def get_absolute_url(self):
+        return ''
+
+    def is_anonymous(self):
+        return True
+
+    def is_authenticated(self):
+        return False
+
+    def is_administrator_or_moderator(self):
+        return False
+
+    def is_blocked(self):
+        return False
+
+    def is_approved(self):
+        return False
+
+    def is_suspended(self):
+        return False
+
+    def is_watched(self):
+        return False
+
+
 class ResponseAndMentionActivityManager(models.Manager):
     def get_query_set(self):
         response_types = const.RESPONSE_ACTIVITY_TYPES_FOR_DISPLAY

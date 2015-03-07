@@ -57,8 +57,13 @@ def owner_or_moderator_required(f):
     def wrapped_func(request, profile_owner, context):
         if profile_owner == request.user:
             pass
-        elif request.user.is_authenticated() and request.user.can_moderate_user(profile_owner):
-            pass
+        elif request.user.is_authenticated():
+            if request.user.can_moderate_user(profile_owner):
+                pass
+            else:
+                #redirect to the user profile homepage
+                #as this one should be accessible to all
+                return HttpResponseRedirect(request.path)
         else:
             next_url = request.path + '?' + urllib.urlencode(request.REQUEST)
             params = '?next=%s' % urllib.quote(next_url)
@@ -106,7 +111,11 @@ def show_users(request, by_group=False, group_id=None, group_slug=None):
                         'group_slug': group_slug})
         return HttpResponseRedirect(new_url)
 
-    users = models.User.objects.exclude(status = 'b')
+    users = models.User.objects.exclude(
+                                    status='b'
+                                ).exclude(
+                                    is_active=False
+                                )
     group = None
     group_email_moderation_enabled = False
     user_acceptance_level = 'closed'
@@ -159,18 +168,15 @@ def show_users(request, by_group=False, group_id=None, group_slug=None):
     if askbot_settings.KARMA_MODE == 'private' and sortby == 'reputation':
         sortby = 'newest'
 
-    try:
-        page = int(request.GET.get('page', '1'))
-    except ValueError:
-        page = 1
+    page = forms.PageField().clean(request.GET.get('page'))
 
-    search_query = request.GET.get('query',  "")
-    if search_query == "":
-        if sortby == "newest":
+    search_query = request.GET.get('query',  '')
+    if search_query == '':
+        if sortby == 'newest':
             order_by_parameter = '-date_joined'
-        elif sortby == "last":
+        elif sortby == 'last':
             order_by_parameter = 'date_joined'
-        elif sortby == "user":
+        elif sortby == 'user':
             order_by_parameter = 'username'
         else:
             # default
@@ -180,15 +186,15 @@ def show_users(request, by_group=False, group_id=None, group_slug=None):
                             users.order_by(order_by_parameter),
                             const.USERS_PAGE_SIZE
                         )
-        base_url = request.path + '?sort=%s&amp;' % sortby
+        base_url = request.path + '?sort=%s&' % sortby
     else:
-        sortby = "reputation"
+        sortby = 'reputation'
         matching_users = models.get_users_by_text_query(search_query, users)
         objects_list = Paginator(
                             matching_users.order_by('-reputation'),
                             const.USERS_PAGE_SIZE
                         )
-        base_url = request.path + '?name=%s&amp;sort=%s&amp;' % (search_query, sortby)
+        base_url = request.path + '?name=%s&sort=%s&' % (search_query, sortby)
 
     try:
         users_page = objects_list.page(page)
@@ -219,17 +225,18 @@ def show_users(request, by_group=False, group_id=None, group_slug=None):
 
     data = {
         'active_tab': 'users',
-        'page_class': 'users-page',
-        'users' : users_page,
         'group': group,
+        'group_email_moderation_enabled': group_email_moderation_enabled,
+        'group_openness_choices': group_openness_choices,
+        'page_class': 'users-page',
+        'paginator_context' : paginator_context,
         'search_query' : search_query,
         'tab_id' : sortby,
-        'paginator_context' : paginator_context,
-        'group_email_moderation_enabled': group_email_moderation_enabled,
         'user_acceptance_level': user_acceptance_level,
-        'user_membership_level': user_membership_level,
+        'user_count': users.count(),
         'user_groups': user_groups,
-        'group_openness_choices': group_openness_choices
+        'user_membership_level': user_membership_level,
+        'users' : users_page,
     }
 
     return render(request, 'users.html', data)
@@ -359,7 +366,7 @@ def edit_user(request, id):
     This view is accessible to profile owners or site administrators
     """
     user = get_object_or_404(models.User, id=id)
-    if not(request.user == user or request.user.is_superuser):
+    if not(request.user.pk == user.pk or request.user.is_superuser):
         raise Http404
     if request.method == "POST":
         form = forms.EditUserForm(user, request.POST)
@@ -534,6 +541,9 @@ def user_stats(request, user, context):
     badges_dict = collections.defaultdict(list)
 
     for award in user_awards:
+        if award.badge.is_enabled() == False:
+            continue
+
         # Fetch content object
         if award.content_type_id == post_type.id:
             #here we go around a possibility of awards
@@ -560,7 +570,7 @@ def user_stats(request, user, context):
     global_group = models.Group.objects.get_global_group()
     user_groups = user_groups.exclude(name=global_group.name)
 
-    if request.user == user:
+    if request.user.pk == user.pk:
         groups_membership_info = user.get_groups_membership_info(user_groups)
     else:
         groups_membership_info = collections.defaultdict()
@@ -749,6 +759,7 @@ def user_responses(request, user, context):
 
     #1) select activity types according to section
     section = request.GET.get('section', 'forum')
+
     if section == 'forum':
         activity_types = const.RESPONSE_ACTIVITY_TYPES_FOR_DISPLAY
         activity_types += (const.TYPE_ACTIVITY_MENTION,)
@@ -756,11 +767,14 @@ def user_responses(request, user, context):
         return show_group_join_requests(request, user, context)
     elif section == 'messages':
         if request.user != user:
-            raise Http404
+            if askbot_settings.ADMIN_INBOX_ACCESS_ENABLED == False:
+                raise Http404
+            elif not(request.user.is_moderator() or request.user.is_administrator()):
+                raise Http404
 
         from group_messaging.views import SendersList, ThreadsList
         context.update(SendersList().get_context(request))
-        context.update(ThreadsList().get_context(request))
+        context.update(ThreadsList().get_context(request, user))
         data = {
             'inbox_threads_count': context['threads_count'],#a hackfor the inbox count
             'active_tab':'users',
@@ -939,15 +953,17 @@ def user_favorites(request, user, context):
                             )[:const.USER_VIEW_DATA_SIZE]
 
     q_paginator = Paginator(questions_qs, const.USER_POSTS_PAGE_SIZE)
-    questions = q_paginator.page(1).object_list
+
+    page = forms.PageField().clean(request.GET.get('page'))
+    questions = q_paginator.page(page).object_list
     question_count = q_paginator.count
 
     q_paginator_context = functions.setup_paginator({
                     'is_paginated' : (question_count > const.USER_POSTS_PAGE_SIZE),
                     'pages': q_paginator.num_pages,
-                    'current_page_number': 1,
-                    'page_object': q_paginator.page(1),
-                    'base_url' : '?' #this paginator will be ajax
+                    'current_page_number': page,
+                    'page_object': q_paginator.page(page),
+                    'base_url' : request.path + '?sort=favorites&' #this paginator will be ajax
                 })
 
     data = {
@@ -965,18 +981,32 @@ def user_favorites(request, user, context):
 
 
 @csrf.csrf_protect
+@decorators.ajax_only
+@decorators.post_only
+def user_set_primary_language(request):
+    if request.user.is_anonymous():
+        raise django_exceptions.PermissionDenied
+
+    form = forms.LanguageForm(request.POST)
+    if form.is_valid():
+        request.user.set_primary_language(form.cleaned_data['language'])
+        request.user.save()
+
+
+@csrf.csrf_protect
 def user_select_languages(request, id=None, slug=None):
     if request.method != 'POST':
         raise django_exceptions.PermissionDenied
 
     user = get_object_or_404(models.User, id=id)
-
     if not(request.user.id == user.id or request.user.is_administrator()):
         raise django_exceptions.PermissionDenied
 
-    languages = request.POST.getlist('languages')
-    user.languages = ' '.join(languages)
-    user.save()
+    form = forms.LanguagePrefsForm(request.POST)
+    if form.is_valid():
+        user.set_languages(form.cleaned_data['languages'])
+        user.set_primary_language(form.cleaned_data['primary_language'])
+        user.save()
 
     redirect_url = reverse(
         'user_subscriptions',
@@ -1088,6 +1118,11 @@ def user(request, id, slug=None, tab_name=None):
     """
     profile_owner = get_object_or_404(models.User, id = id)
 
+    if slugify(profile_owner.username) != slug:
+        view_url = profile_owner.get_profile_url() + '?' \
+                                + urllib.urlencode(request.REQUEST)
+        return HttpResponseRedirect(view_url)
+
     if not tab_name:
         tab_name = request.GET.get('sort', 'stats')
 
@@ -1100,7 +1135,7 @@ def user(request, id, slug=None, tab_name=None):
             can_show_karma = False
         elif request.user.is_administrator_or_moderator():
             can_show_karma = True
-        elif request.user == profile_owner:
+        elif request.user.pk == profile_owner.pk:
             can_show_karma = True
         else:
             can_show_karma = False

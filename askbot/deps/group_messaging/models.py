@@ -1,19 +1,22 @@
 """models for the ``group_messaging`` app
 """
-import copy
-import datetime
-import urllib
 from askbot.mail import send_mail #todo: remove dependency?
-from django.template.loader import get_template
-from django.template import Context
-from django.db import models
-from django.db.models import signals
+from askbot.mail.messages import GroupMessagingEmailAlert
 from django.conf import settings as django_settings
 from django.contrib.auth.models import Group
 from django.contrib.auth.models import User
 from django.contrib.sites.models import Site
+from django.db import models
+from django.db.models import signals
+from django.template import Context
+from django.template.loader import get_template
 from django.utils.importlib import import_module
 from django.utils.translation import ugettext as _
+from group_messaging.signals import response_created
+from group_messaging.signals import thread_created
+import copy
+import datetime
+import urllib
 
 MAX_HEADLINE_LENGTH = 80
 MAX_SENDERS_INFO_LENGTH = 64
@@ -51,6 +54,12 @@ def get_personal_group(user):
     return get_personal_group_by_user_id(user.id)
 
 
+def get_unread_inbox_counter(user):
+    """returns unread inbox counter for the user"""
+    counter, junk = UnreadInboxCounter.objects.get_or_create(user=user)
+    return counter 
+
+
 def create_personal_group(user):
     """creates a personal group for the user"""
     group = Group(name=GROUP_NAME_TPL % user.id)
@@ -81,6 +90,7 @@ class SenderListManager(models.Manager):
                         'senders__id', flat=True
                     ).distinct()
         return User.objects.filter(id__in=user_ids)
+
 
 class SenderList(models.Model):
     """a model to store denormalized data
@@ -145,7 +155,7 @@ class MessageManager(models.Manager):
         based on recipient, sender and whether to
         load deleted messages or not"""
 
-        if sender and sender == recipient:
+        if sender and sender.pk == recipient.pk:
             raise ValueError('sender cannot be the same as recipient')
 
         filter_kwargs = {
@@ -225,7 +235,8 @@ class MessageManager(models.Manager):
         message.add_recipient_names_to_senders_info(recipients)
         message.save()
         message.add_recipients(recipients)
-        message.send_email_alert()
+
+        thread_created.send(None, message=message)
         return message
 
     def create_response(self, sender=None, text=None, parent=None):
@@ -254,7 +265,8 @@ class MessageManager(models.Manager):
         message.root.update_senders_info()
         #unarchive the thread for all recipients
         message.root.unarchive()
-        message.send_email_alert()
+
+        response_created.send(None, message=message)
         return message
 
 
@@ -325,6 +337,7 @@ class Message(models.Model):
         and updates the sender lists for all recipients
         todo: sender lists may be updated in a lazy way - per user
         """
+        self._cached_recipients_users = None #invalidate internal cache
         self.recipients.add(*recipients)
         for recipient in recipients:
             sender_list, created = SenderList.objects.get_or_create(recipient=recipient)
@@ -361,16 +374,25 @@ class Message(models.Model):
         """returns root message or self
         if current message is root
         """
-        return self.root or self
+        if getattr(self, '_cached_root', None):
+            return self._cached_root
+        self._cached_root = self.root or self
+        return self._cached_root
 
     def get_recipients_users(self):
         """returns query set of users"""
+        if getattr(self, '_cached_recipients_users', None):
+            return self._cached_recipients_users
+
         groups = self.recipients.all()
-        return User.objects.filter(
-                        groups__in=groups
-                    ).exclude(
-                        id=self.sender.id
-                    ).distinct()
+        recipients_users = User.objects.filter(
+                                    groups__in=groups
+                                ).exclude(
+                                    id=self.sender.id
+                                ).distinct()
+        self._cached_recipients_users = recipients_users
+        return recipients_users
+
 
     def get_timeline(self):
         """returns ordered query set of messages in the thread
@@ -380,12 +402,37 @@ class Message(models.Model):
         return (root.descendants.all() | root_qs).order_by('-sent_at')
 
 
+    def is_unread_by_user(self, user, ignore_message=None):
+        """True, if there is no "last visit timestamp"
+        or if there are new child messages created after
+        the last visit timestamp"""
+        try:
+            timer = LastVisitTime.objects.get(user=user, message=self)
+        except LastVisitTime.DoesNotExist:
+            #no last visit timestamp, so indeed unread
+            return True
+        else:
+            #see if there are new messages after the last visit
+            last_visit_timestamp = timer.at
+            descendants_filter = models.Q(sent_at__gt=last_visit_timestamp)
+            if ignore_message:
+                #ignore message used for the newly posted message
+                #in the same request cycle. The idea is that
+                #this way we avoid multiple-counting of the unread
+                #threads
+                descendants_filter &= ~models.Q(id=ignore_message.id)
+            follow_up_messages = self.descendants.filter(descendants_filter)
+            #unread, if we have new followup messages
+            return bool(follow_up_messages.count())
+
+
     def send_email_alert(self):
         """signal handler for the message post-save"""
         root_message = self.get_root_message()
-        data = {'messages': self.get_timeline()}
-        template = get_template('group_messaging/email_alert.html')
-        subject = self.get_email_subject_line()
+        data = {
+            'messages': self.get_timeline(),
+            'message': self
+        }
         for user in self.get_recipients_users():
             #todo change url scheme so that all users have the same
             #urls within their personal areas of the user profile
@@ -394,10 +441,11 @@ class Message(models.Model):
             thread_url = thread_url.replace('&', '&amp;')
             #in the template we have a placeholder to be replaced like this:
             data['recipient_user'] = user
-            body_text = template.render(Context(data))
+            email = GroupMessagingEmailAlert(data)
+            body_text = email.render_body()
             body_text = body_text.replace('THREAD_URL_HOLE', thread_url)
             send_mail(
-                subject,
+                email.render_subject(),
                 body_text,
                 django_settings.DEFAULT_FROM_EMAIL,
                 [user.email,],
@@ -430,11 +478,94 @@ class Message(models.Model):
         memo, created = MessageMemo.objects.get_or_create(user=user, message=self)
         memo.status = status
         memo.save()
+        return created
 
     def archive(self, user):
         """mark message as archived"""
-        self.set_status_for_user(MessageMemo.ARCHIVED, user)
+        return self.set_status_for_user(MessageMemo.ARCHIVED, user)
 
     def mark_as_seen(self, user):
         """mark message as seen"""
-        self.set_status_for_user(MessageMemo.SEEN, user)
+        is_first_time = self.set_status_for_user(MessageMemo.SEEN, user)
+        root = self.get_root_message()
+        if is_first_time or root.is_unread_by_user(user):
+            inbox_counter = get_unread_inbox_counter(user)
+            inbox_counter.decrement()
+            inbox_counter.save()
+
+
+class UnreadInboxCounter(models.Model):
+    """Stores number of unread messages
+    per recipient group.
+
+    It is relatively expensive to calculate this number,
+    therefore we store it in the database.
+
+    In order to know number of uread messages for a given
+    user, one has to get all groups user belongs to
+    and add up the corresponding counts of unread messages.
+    """
+    user = models.ForeignKey(User)
+    count = models.PositiveIntegerField(default=0)
+
+    def decrement(self):
+        """decrements count if > 1
+        does not save the object""" 
+        if self.count > 0:
+            self.count -= 1
+
+    def increment(self):
+        self.count += 1
+
+    def reset(self):
+        self.count = 0
+
+    def recalculate(self):
+        """recalculates count of unread messages
+        for the user and sets the updated value.
+        Does not call .save()"""
+        self.reset()
+        for thread in Message.objects.get_threads(recipient=self.user):
+            if thread.is_unread_by_user(self.user):
+                self.increment()
+
+
+def increment_unread_inbox_counters(sender, message, **kwargs):
+    root_message = message.get_root_message()
+    for user in message.get_recipients_users():
+        if message == root_message or \
+            not root_message.is_unread_by_user(user, ignore_message=message):
+            # if message is root - we have new thread,
+            # so it's safe to increment the inbox counter
+            # if the message is a reply - the counter might
+            # have already been incremented. Therefore - we check
+            # whether the message was unread by the user,
+            # excluding the current message, which is obviously unread
+            counter = get_unread_inbox_counter(user)
+            counter.increment()
+            counter.save()
+
+
+def send_email(sender, message, **kwargs):
+    message.send_email_alert()
+
+
+thread_created.connect(
+    receiver=send_email,
+    dispatch_uid="thread_send_email"
+)
+
+thread_created.connect(
+    receiver=increment_unread_inbox_counters,
+    dispatch_uid="thread_increment_unread_inbox_counters"
+)
+
+response_created.connect(
+    receiver=send_email,
+    dispatch_uid="message_reply_send_email"
+)
+
+response_created.connect(
+    receiver=increment_unread_inbox_counters,
+    dispatch_uid="message_reply_increment_unread_inbox_counters"
+)
