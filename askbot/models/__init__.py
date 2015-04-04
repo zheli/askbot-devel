@@ -1,5 +1,6 @@
 from askbot import startup_procedures
 startup_procedures.run()
+import django_transaction_signals
 
 from django.contrib.auth.models import User
 
@@ -28,7 +29,7 @@ from django.db import models
 from django.db.models import Count
 from django.conf import settings as django_settings
 from django.contrib.contenttypes.models import ContentType
-from django.core import cache
+from django.core.cache import cache
 from django.core import exceptions as django_exceptions
 from django_countries.fields import CountryField
 from askbot import exceptions as askbot_exceptions
@@ -59,12 +60,15 @@ from askbot.models.meta import ImportRun, ImportedObjectInfo
 from askbot import auth
 from askbot.utils.decorators import auto_now_timestamp
 from askbot.utils.decorators import reject_forbidden_phrases
+from askbot.utils.cache import memoize, delete_memoized
 from askbot.utils.markup import URL_RE
 from askbot.utils.slug import slugify
+from askbot.utils.transaction import defer_celery_task
 from askbot.utils.html import replace_links_with_text
 from askbot.utils.html import site_url
 from askbot.utils.db import table_exists
 from askbot.utils.url_utils import strip_path
+from askbot.utils import functions
 from askbot import mail
 from askbot import signals
 
@@ -188,11 +192,18 @@ User.add_to_class('reputation',
 )
 User.add_to_class('gravatar', models.CharField(max_length=32))
 #User.add_to_class('has_custom_avatar', models.BooleanField(default=False))
+
 User.add_to_class(
     'avatar_type',
-    models.CharField(max_length=1,
-        choices=const.AVATAR_STATUS_CHOICE,
-        default='n')
+    models.CharField(
+        max_length=1,
+        choices=(
+            ('n', _('None')),
+            ('g', _('Gravatar')),#only if user has real uploaded gravatar
+            ('a', _('Uploaded Avatar')),#avatar uploaded locally - with django-avatar app
+        ),
+        default='n'
+    )
 )
 User.add_to_class('gold', models.SmallIntegerField(default=0))
 User.add_to_class('silver', models.SmallIntegerField(default=0))
@@ -210,8 +221,8 @@ User.add_to_class('real_name', models.CharField(max_length=100, blank=True))
 User.add_to_class('website', models.URLField(max_length=200, blank=True))
 #location field is actually city
 User.add_to_class('location', models.CharField(max_length=100, blank=True))
-User.add_to_class('country', CountryField(blank = True))
-User.add_to_class('show_country', models.BooleanField(default = False))
+User.add_to_class('country', CountryField(blank=True))
+User.add_to_class('show_country', models.BooleanField(default=False))
 
 User.add_to_class('date_of_birth', models.DateField(null=True, blank=True))
 User.add_to_class('about', models.TextField(blank=True))
@@ -282,30 +293,60 @@ def user_get_default_avatar_url(self, size):
     """
     return skin_utils.get_media_url(askbot_settings.DEFAULT_AVATAR_URL)
 
+def user_get_avatar_type(self):
+    """returns user avatar type, taking into account
+    avatar_type value and how use of avatar and/or gravatar
+    is configured
+    Value returned is one of 'n', 'a', 'g'.
+    """
+    if 'avatar' in django_settings.INSTALLED_APPS:
+        if self.avatar_type == 'g':
+            if askbot_settings.ENABLE_GRAVATAR:
+                return 'g'
+            else:
+                #fallback to default avatar if gravatar is disabled
+                return 'n'
+        assert(self.avatar_type in ('a', 'n'))#only these are allowed
+        return self.avatar_type
+
+    #if we don't have an uploaded avatar, always use gravatar
+    return 'g'
+
+@memoize
 def user_get_avatar_url(self, size=48):
     """returns avatar url - by default - gravatar,
     but if application django-avatar is installed
     it will use avatar provided through that app
     """
-    if 'avatar' in django_settings.INSTALLED_APPS:
-        if self.avatar_type == 'n':
-            return self.get_default_avatar_url(size)
-        elif self.avatar_type == 'a':
-            kwargs = {'user': self.username, 'size': size}
-            try:
-                return reverse('avatar_render_primary', kwargs=kwargs)
-            except NoReverseMatch:
-                message = 'Please, make sure that avatar urls are in the urls.py '\
-                          'or update your django-avatar app, '\
-                          'currently it is impossible to serve avatars.'
-                logging.critical(message)
-                raise django_exceptions.ImproperlyConfigured(message)
-        else:
-            return self.get_gravatar_url(size)
-    if askbot_settings.ENABLE_GRAVATAR:
-        return self.get_gravatar_url(size)
-    else:
+    avatar_type = self.get_avatar_type()
+
+    if avatar_type == 'n':
         return self.get_default_avatar_url(size)
+    elif avatar_type == 'a':
+        from avatar.conf import settings as avatar_settings
+        sizes = avatar_settings.AUTO_GENERATE_AVATAR_SIZES
+        if size not in sizes:
+            logging.critical('add values %d to setting AUTO_GENERATE_AVATAR_SIZES')
+
+        kwargs = {'user': self.username, 'size': size}
+        try:
+            return reverse('avatar_render_primary', kwargs=kwargs)
+        except NoReverseMatch:
+            message = 'Please, make sure that avatar urls are in the urls.py '\
+                      'or update your django-avatar app, '\
+                      'currently it is impossible to serve avatars.'
+            logging.critical(message)
+            raise django_exceptions.ImproperlyConfigured(message)
+    assert(avatar_type == 'g')
+    return self.get_gravatar_url(size)
+
+
+def user_clear_avatar_cache(self):
+    from avatar.conf import settings as avatar_settings
+    sizes = avatar_settings.AUTO_GENERATE_AVATAR_SIZES
+    for size in sizes:
+        delete_memoized(user_get_avatar_url, self, size=size)
+
 
 def user_get_top_answers_paginator(self, visitor=None):
     """get paginator for top answers by the user for a
@@ -1307,8 +1348,10 @@ def user_assert_can_revoke_old_vote(self, vote):
     """raises exceptions.PermissionDenied if old vote
     cannot be revoked due to age of the vote
     """
-    if (datetime.datetime.now().day - vote.voted_at.day) \
-        >= askbot_settings.MAX_DAYS_TO_CANCEL_VOTE:
+    if askbot_settings.MAX_DAYS_TO_CANCEL_VOTE < 0:
+        return
+    if (datetime.datetime.now() - vote.voted_at).days \
+            >= askbot_settings.MAX_DAYS_TO_CANCEL_VOTE:
         raise django_exceptions.PermissionDenied(
             _('sorry, but older votes cannot be revoked')
         )
@@ -2620,9 +2663,9 @@ def user_get_languages(self):
 
 def user_get_primary_language(self):
     if getattr(django_settings, 'ASKBOT_MULTILINGUAL', False):
-        return django_settings.LANGUAGE_CODE
-    else:
         return self.get_languages()[0]
+    else:
+        return django_settings.LANGUAGE_CODE
 
 def get_profile_link(self, text=None):
     profile_link = u'<a href="%s">%s</a>' \
@@ -3208,7 +3251,9 @@ User.add_to_class(
     user_subscribe_for_followed_question_alerts
 )
 User.add_to_class('get_absolute_url', user_get_absolute_url)
+User.add_to_class('get_avatar_type', user_get_avatar_type)
 User.add_to_class('get_avatar_url', user_get_avatar_url)
+User.add_to_class('clear_avatar_cache', user_clear_avatar_cache)
 User.add_to_class('get_default_avatar_url', user_get_default_avatar_url)
 User.add_to_class('get_gravatar_url', user_get_gravatar_url)
 User.add_to_class('get_or_create_fake_user', user_get_or_create_fake_user)
@@ -3416,7 +3461,10 @@ def notify_author_of_published_revision(revision=None, was_approved=False, **kwa
     #only email about first revision
     if revision.should_notify_author_about_publishing(was_approved):
         from askbot.tasks import notify_author_of_published_revision_celery_task
-        notify_author_of_published_revision_celery_task.delay(revision.pk)
+        defer_celery_task(
+            notify_author_of_published_revision_celery_task,
+            args=(revision.pk,)
+        )
 
 
 #todo: move to utils
@@ -3450,15 +3498,19 @@ def record_post_update_activity(
 
     from askbot import tasks
 
-    tasks.record_post_update_celery_task.delay(
-        post_id=post.id,
-        post_content_type_id=ContentType.objects.get_for_model(post).id,
-        newly_mentioned_user_id_list=[u.id for u in newly_mentioned_users],
-        updated_by_id=updated_by.id,
-        suppress_email=suppress_email,
-        timestamp=timestamp,
-        created=created,
-        diff=diff,
+    mentioned_ids = [u.id for u in newly_mentioned_users]
+
+    defer_celery_task(
+        tasks.record_post_update_celery_task,
+        kwargs = {
+            'post_id': post.id,
+            'newly_mentioned_user_id_list': mentioned_ids,
+            'updated_by_id': updated_by.id,
+            'suppress_email': suppress_email,
+            'timestamp': timestamp,
+            'created': created,
+            'diff': diff,
+        }
     )
 
 
@@ -3562,6 +3614,37 @@ def record_user_visit(user, timestamp, **kwargs):
     }
     User.objects.filter(id=user.id).update(**update_data)
 
+
+def record_question_visit(request, question, **kwargs):
+    if functions.not_a_robot_request(request):
+        #todo: split this out into a subroutine
+        #todo: merge view counts per user and per session
+        #1) view count per session
+        if 'question_view_times' not in request.session:
+            request.session['question_view_times'] = {}
+
+        last_seen = request.session['question_view_times'].get(question.id, None)
+
+        update_view_count = False
+        if question.thread.last_activity_by_id != request.user.id:
+            if last_seen:
+                if last_seen < question.thread.last_activity_at:
+                    update_view_count = True
+            else:
+                update_view_count = True
+
+        request.session['question_view_times'][question.id] = \
+                                                    datetime.datetime.now()
+        #2) run the slower jobs in a celery task
+        from askbot import tasks
+        defer_celery_task(
+            tasks.record_question_visit,
+            kwargs={
+                'question_post_id': question.id,
+                'user_id': request.user.id,
+                'update_view_count': update_view_count
+            }
+        )
 
 def record_vote(instance, created, **kwargs):
     """
@@ -3844,7 +3927,6 @@ def make_admin_if_first_user(user, **kwargs):
 
     function is run when user registers
     """
-    import sys
     user_count = User.objects.all().count()
     if user_count == 1:
         user.set_status('d')
@@ -3906,7 +3988,7 @@ def tweet_new_post(sender, user=None, question=None, answer=None, form_data=None
     """seends out tweets about the new post"""
     from askbot.tasks import tweet_new_post_task
     post = question or answer
-    tweet_new_post_task.delay(post.id)
+    defer_celery_task(tweet_new_post_task, args=(post.id,))
 
 def autoapprove_reputable_user(user=None, reputation_before=None, *args, **kwargs):
     """if user is 'watched' we change status to 'approved'
@@ -3955,7 +4037,7 @@ def record_spam_rejection(
         activity.active_at = now
         activity.summary = summary
         activity.save()
-    
+
 
 from south.signals import ran_migration 
 
@@ -4058,6 +4140,7 @@ if 'avatar' in django_settings.INSTALLED_APPS:
         dispatch_uid='update_avatar_type_flag_on_avatar_delete'
     )
 
+
 django_signals.post_delete.connect(
     record_cancel_vote,
     sender=Vote,
@@ -4135,6 +4218,10 @@ signals.post_revision_published.connect(
 signals.site_visited.connect(
     record_user_visit,
     dispatch_uid='record_user_visit'
+)
+signals.question_visited.connect(
+    record_question_visit,
+    dispatch_uid='record_question_visit'
 )
 
 #set up a possibility for the users to follow others

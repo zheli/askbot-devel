@@ -3,6 +3,8 @@ Changes in Askbot
 
 Development version (only in the repository)
 --------------------------------------------
+* Support migration of Google OpenID accounts to G+
+* Added setting to allow comment updates show on the main page
 * Improved support of uploadable avatars
 * Added authentication via MediaWiki
 * Added option to specify `ASKBOT_QUESTION_TITLE_RENDERER` function

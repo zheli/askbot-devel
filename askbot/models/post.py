@@ -34,6 +34,7 @@ from askbot import exceptions
 from askbot.utils import markup
 from askbot.utils.html import (get_word_count, has_moderated_tags,
                 moderate_tags, sanitize_html, strip_tags, site_url)
+from askbot.utils.transaction import defer_celery_task
 from askbot.models.base import BaseQuerySetManager, DraftContent
 
 #todo: maybe merge askbot.utils.markup and forum.utils.html
@@ -845,12 +846,15 @@ class Post(models.Model):
             cache.cache.set(cache_key, True, django_settings.NOTIFICATION_DELAY_TIME)
 
         from askbot.tasks import send_instant_notifications_about_activity_in_post
-        send_instant_notifications_about_activity_in_post.apply_async((
-                                update_activity.pk,
-                                self.id,
-                                notify_sets['for_email']),
-                                countdown = django_settings.NOTIFICATION_DELAY_TIME
-                            )
+        defer_celery_task(
+            send_instant_notifications_about_activity_in_post,
+            args=(
+                update_activity.pk,
+                self.id,
+                notify_sets['for_email']
+            ),
+            countdown=django_settings.NOTIFICATION_DELAY_TIME
+        )
 
     def make_private(self, user, group_id=None):
         """makes post private within user's groups
@@ -1244,21 +1248,10 @@ class Post(models.Model):
             self.comment_count = self.comment_count + 1
             self.save()
 
-        #tried to add this to bump updated question
-        #in most active list, but it did not work
-        #becase delayed email updates would be triggered
-        #for cases where user did not subscribe for them
-        #
-        #need to redo the delayed alert sender
-        #
-        #origin_post = self.get_origin_post()
-        #if origin_post == self:
-        #    self.last_activity_at = added_at # WARNING: last_activity_* are now in Thread
-        #    self.last_activity_by = user
-        #else:
-        #    origin_post.last_activity_at = added_at
-        #    origin_post.last_activity_by = user
-        #    origin_post.save()
+        if askbot_settings.COMMENT_EDITING_BUMPS_THREAD:
+            #todo: fix send_email_alerts command so that
+            #excessive emails are not sent
+            self.thread.set_last_activity_info(added_at, user)
 
         return comment_post
 
@@ -2008,6 +2001,12 @@ class Post(models.Model):
                 diff=parse_results['diff'],
                 sender=self.__class__
             )
+
+        if self.is_comment() and askbot_settings.COMMENT_EDITING_BUMPS_THREAD:
+            self.thread.set_last_activity_info(
+                            last_activity_at=edited_at,
+                            last_activity_by=edited_by
+                        )
 
         return latest_rev
 

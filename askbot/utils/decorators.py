@@ -20,6 +20,7 @@ from askbot.utils import url_utils
 from askbot.utils.html import site_url
 from askbot import get_version
 
+
 def auto_now_timestamp(func):
     """decorator that will automatically set
     argument named timestamp to the "now" value if timestamp == None
@@ -27,12 +28,12 @@ def auto_now_timestamp(func):
     if there is no timestamp argument, then exception is raised
     """
     @functools.wraps(func)
-    def decorated_func(*arg, **kwarg):
+    def decorating_func(*arg, **kwarg):
         timestamp = kwarg.get('timestamp', None)
         if timestamp is None:
             kwarg['timestamp'] = datetime.datetime.now()
         return func(*arg, **kwarg)
-    return decorated_func
+    return decorating_func
 
 
 def ajax_login_required(view_func):
@@ -119,10 +120,9 @@ def ajax_only(view_func):
     return wrapper
 
 def check_authorization_to_post(func_or_message):
-
     message = _('Please login to post')
     if not inspect.isfunction(func_or_message):
-        message = unicode(func_or_message)
+        message = func_or_message
 
     def decorator(view_func):
         @functools.wraps(view_func)
@@ -130,7 +130,7 @@ def check_authorization_to_post(func_or_message):
             if request.user.is_anonymous():
                 #todo: expand for handling ajax responses
                 if askbot_settings.ALLOW_POSTING_BEFORE_LOGGING_IN == False:
-                    request.user.message_set.create(message = message)
+                    request.user.message_set.create(message=unicode(message))
                     params = 'next=%s' % request.path
                     return HttpResponseRedirect(url_utils.get_login_url() + '?' + params)
             return view_func(request, *args, **kwargs)
