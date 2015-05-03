@@ -222,8 +222,8 @@ class PageLoadTestCase(AskbotTestCase):
                 status_code=status_code)
         self.try_url(
                 'about',
-                status_code=status_code,
-                template='static_page.html')
+                status_code=200,
+                template='landingpage/about.html')
         self.try_url(
                 'privacy',
                 status_code=status_code,
